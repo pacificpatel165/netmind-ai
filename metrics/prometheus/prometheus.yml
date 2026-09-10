@@ -1,0 +1,20 @@
+# Component #3 (metrics store), stage 1 — direct scrape, default retention.
+#
+# Scrapes gnmic's built-in Prometheus output endpoint directly (see
+# telemetry/collectors/gnmic.yaml's `telemetry-prometheus` output) —
+# no Kafka buffer yet, decided 2026-09-10. Retention left at
+# Prometheus's 15-day default; revisit deliberately once there's real
+# accumulated data to reason about, not before.
+#
+# Target is addressed by containerlab's full container name, same
+# convention as gnmic.yaml's srl1/srl2 targets — containerlab's Docker
+# network resolves it via embedded DNS.
+
+global:
+  scrape_interval: 10s      # matches gnmic's sample-interval; no point scraping faster than data changes
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: netmind-gnmic
+    static_configs:
+      - targets: ["clab-netmind-2node-gnmic:9804"]

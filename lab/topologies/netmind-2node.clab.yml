@@ -39,10 +39,8 @@ topology:
     srl:
       image: ghcr.io/nokia/srlinux:latest
       type: ixr-d2 # containerlab warns "ixrd2" is deprecated (removed after Jan 2026); this is the current dashed form
-    linux:
-      # gnmic's official image. Verify this tag still resolves on first
-      # deploy — pin it once confirmed rather than tracking `latest`.
-      image: ghcr.io/openconfig/gnmic:latest
+    # No default image for the `linux` kind — gnmic and prometheus both
+    # use it but need different images, so each node sets its own below.
 
   nodes:
     srl1:
@@ -58,6 +56,7 @@ topology:
     # and telemetry/README.md for the subscription design.
     gnmic:
       kind: linux
+      image: ghcr.io/openconfig/gnmic:latest
       mgmt-ipv4: 172.100.100.20
       binds:
         - ../../telemetry/collectors/gnmic.yaml:/etc/gnmic/gnmic.yaml:ro
@@ -69,6 +68,24 @@ topology:
         # directly, no docker exec required.
         - ../../telemetry/output:/var/log/gnmic
       cmd: subscribe --config /etc/gnmic/gnmic.yaml
+
+    # Component #3: metrics store. Scrapes gnmic's Prometheus output
+    # (port 9804, added above) directly — no Kafka buffer, decided
+    # 2026-09-10 — see metrics/README.md and metrics/prometheus/prometheus.yml.
+    # No persistent data volume yet: stage 1 only needs to prove the
+    # scrape works, and a bind-mounted /prometheus would hit the same
+    # class of permission mismatch gnmic's file output did (container
+    # runs as its own `nobody` user, host dir owned by `clab`) for no
+    # benefit yet — data can live and die with the container for now.
+    prometheus:
+      kind: linux
+      image: prom/prometheus:latest # verify tag resolves on first deploy, like gnmic's image was
+      mgmt-ipv4: 172.100.100.30
+      binds:
+        - ../../metrics/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      cmd: --config.file=/etc/prometheus/prometheus.yml --web.listen-address=:9090
+      ports:
+        - "9090:9090" # so the Prometheus UI is reachable at http://localhost:9090 from Windows
 
   links:
     # Data-plane link between the two nodes. This is the path

@@ -35,6 +35,21 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-10 (9) — Component #3 kickoff: metrics store design
+**Focus:** Design and build the first version of the metrics store.
+**Decided:**
+- Path from collector to store: **direct scrape, no Kafka buffer.** gnmic exposes a Prometheus scrape endpoint directly; Prometheus scrapes it. Matches how #1 and #2 were built — smallest thing that proves the pipeline first. Revisit Kafka only if a second consumer of the same stream shows up later.
+- Retention: **Prometheus's 15-day default, not touched.** The roadmap flags retention/downsampling as a learning goal for this component, but deliberately not addressed yet — there isn't enough real accumulated data to make the trade-offs concrete. Comes back as its own explicit topic later.
+- Deployment: **containerized**, same pattern as `gnmic` — its own node in the topology, no persistent data volume yet (would hit the same container-user-vs-host-owner permission class of bug gnmic's file output did, for no benefit at this stage).
+**Built:**
+- `telemetry/collectors/gnmic.yaml` — added a `telemetry-prometheus` output (port 9804, `metric-prefix: netmind`) alongside the existing file output. Same subscriptions feed both.
+- `metrics/prometheus/prometheus.yml` — scrapes `clab-netmind-2node-gnmic:9804` every 10s (matches gnmic's sample interval).
+- `metrics/README.md` — the decisions above plus how to verify (Prometheus UI at `http://localhost:9090`, Status → Targets, a sample PromQL query).
+- `lab/topologies/netmind-2node.clab.yml` — added the `prometheus` node (`prom/prometheus:latest`, port 9090 published to Windows via WSL2's automatic forwarding); moved `gnmic`'s image to node-level since the `linux` kind now hosts two nodes needing different images.
+**Not yet verified:** none of this has been deploy-tested this session (written without shell access) — first redeploy may need a small correction, same caveat as component #2's first attempt.
+**Next:** Full redeploy (new bind mounts/ports need it, not an incremental add), then confirm the `netmind-gnmic` scrape target shows `UP` in Prometheus and a query returns series for both `srl1` and `srl2` — that's the exit criterion for component #3 stage 1.
+**Open questions:** none blocking.
+
 ### 2026-09-10 (8) — Component diagram published
 **Focus:** Visual diagram of how components #1 and #2 connect, which platform each runs on, and how the gNMI subscribe/publish exchange actually works.
 **Built:**

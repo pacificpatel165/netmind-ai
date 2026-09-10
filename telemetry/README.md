@@ -30,14 +30,16 @@ normalized for ingestion by the future metrics store (component #3).
   that's where the lab actually runs; nothing here syncs back to the
   Windows-drive copy of the repo.
 
-## Stage 1 scope
+## Scope
 
 Subscribes to interface operational/admin state and statistics on both
-nodes, sampled every 10s, written to a file
+nodes, sampled every 10s, fed to two outputs: a file
 (`output/netmind-telemetry.jsonl`, readable directly from the WSL shell
-thanks to the bind mount below). No Prometheus output yet — that gets
-added once component #3 (metrics store) exists, without needing to
-redesign the subscription itself.
+— the original stage-1 validation output, still useful for raw
+inspection) and, since 2026-09-10, a Prometheus scrape endpoint on port
+9804 — see `metrics/README.md` for the metrics-store side of that same
+pipeline. Same subscription set feeds both; adding Prometheus didn't
+require touching the subscription design at all.
 
 **Known gotcha:** `gnmic`'s file output does not create a missing parent
 directory — `/var/log/gnmic/` doesn't exist in the image, so without the

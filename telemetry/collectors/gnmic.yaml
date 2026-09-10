@@ -1,13 +1,15 @@
-# gnmic subscription config — component #2, stage 1.
+# gnmic subscription config — component #2 (verified stage 1) plus the
+# Prometheus output for component #3 (metrics store, direct-scrape,
+# decided 2026-09-10 over a Kafka buffer — see metrics/README.md).
 #
-# Subscribes to interface operational state + statistics on both lab
-# nodes and writes the stream to a file for validation. No Prometheus
-# output yet — component #3 (metrics store) adds that once it exists;
-# this stage's only job is proving the subscribe pipeline is reliable.
+# Same subscription set feeds both outputs below: the file (component
+# #2's original validation output, still useful for raw inspection) and
+# the Prometheus scrape endpoint (what actually matters going forward).
 #
 # Verify against the installed gnmic version on first run — path names
 # and output-plugin field names can shift slightly between gnmic
-# releases (this was written against gnmic installed 2026-09-10).
+# releases (this was written against gnmic 0.48.0, installed
+# 2026-09-10 — confirmed via `gnmic subscribe ... --debug` output).
 
 targets:
   srl1:
@@ -37,7 +39,16 @@ outputs:
     filename: /var/log/gnmic/netmind-telemetry.jsonl
     format: event
 
-# Next stage (component #3): add a `prometheus` output here once
-# Prometheus exists, so this same subscription set feeds both the
-# validation file and the metrics store without redesigning the
-# collector.
+  # Component #3: exposes a Prometheus scrape endpoint directly —
+  # scraped by metrics/prometheus/prometheus.yml's `netmind-gnmic` job.
+  # metric-prefix keeps everything under one recognizable namespace
+  # (e.g. netmind_srl_nokia_interfaces_interface_oper_state) rather than
+  # colliding with any other exporter's metric names.
+  telemetry-prometheus:
+    type: prometheus
+    listen: :9804
+    path: /metrics
+    metric-prefix: netmind
+    append-subscription-name: true
+    export-timestamps: false
+    strings-as-labels: true
