@@ -1,0 +1,60 @@
+# NetMind AI — component #1 (network lab), stage 1 topology.
+#
+# Two Nokia SR Linux nodes connected by a single point-to-point link.
+# Purpose: get containerlab + SR Linux working end to end, and give
+# component #2 (telemetry collector) a live gNMI target before any
+# topology complexity is added.
+#
+# Design note — lab/K8s relationship (locked 2026-09-10):
+# This lab is meant to sit *underneath* the phase-2 Kubernetes/Cilium
+# cluster, not next to it as an unrelated sibling. At this stage there
+# is no K8s cluster yet, so nothing here talks to one — but each node
+# reserves a second interface (e1-2) specifically for that future
+# attachment, so the topology doesn't need to be redesigned when K8s
+# shows up. Until then e1-2 stays unused.
+#
+# IMPORTANT — deploy from native Linux filesystem, not /mnt/c/...:
+# WSL2's DrvFs (the /mnt/c/... view of the Windows drive) doesn't support
+# the POSIX permission bits SR Linux needs to chmod its own config files
+# during commit, which makes postdeploy fail with "Setting permissions
+# for file '/etc/opt/srlinux/config.tmp' failed ... [Operation not
+# permitted]". This file is the source of truth (kept in git on the
+# Windows drive so it's reachable from other tooling), but always copy
+# it to a native path before deploying:
+#
+#   mkdir -p ~/netmind-lab/topologies
+#   cp /mnt/c/MyWorkSpace/AI-Projects/NetMind-AI/lab/topologies/netmind-2node.clab.yml ~/netmind-lab/topologies/
+#   cd ~/netmind-lab/topologies
+#   sudo clab deploy -t netmind-2node.clab.yml
+#
+# Destroy:
+#   sudo clab destroy -t netmind-2node.clab.yml --cleanup
+
+name: netmind-2node
+
+topology:
+  kinds:
+    srl:
+      image: ghcr.io/nokia/srlinux:latest
+      type: ixr-d2 # containerlab warns "ixrd2" is deprecated (removed after Jan 2026); this is the current dashed form
+
+  nodes:
+    srl1:
+      kind: srl
+      mgmt-ipv4: 172.100.100.11
+    srl2:
+      kind: srl
+      mgmt-ipv4: 172.100.100.12
+
+  links:
+    # Data-plane link between the two nodes. This is the path
+    # component #2 will stream gNMI telemetry from.
+    - endpoints: ["srl1:e1-1", "srl2:e1-1"]
+
+    # e1-2 on each node is intentionally left undeclared here — it's
+    # the reserved attachment point for the future K8s/Cilium
+    # integration described above, not forgotten.
+
+mgmt:
+  network: netmind-mgmt
+  ipv4-subnet: 172.100.100.0/24
