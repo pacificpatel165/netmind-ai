@@ -106,6 +106,27 @@ topology:
       ports:
         - "3000:3000" # Grafana UI reachable at http://localhost:3000 from Windows
 
+    # Component #5: anomaly detection. Queries Prometheus for a rolling
+    # baseline (avg/stddev over a window) per interface counter,
+    # computes a z-score, and exposes it back as its own Prometheus
+    # metrics — see intelligence/anomaly-detection/README.md. No ML/LLM
+    # yet, deliberately: a statistical baseline first, per the roadmap.
+    #
+    # No public image exists for this — it's project code, built
+    # locally before first deploy:
+    #   cd intelligence/anomaly-detection && docker build -t netmind-anomaly-detector:latest .
+    anomaly-detector:
+      kind: linux
+      image: netmind-anomaly-detector:latest
+      mgmt-ipv4: 172.100.100.50
+      env:
+        PROMETHEUS_URL: http://clab-netmind-2node-prometheus:9090
+        EVAL_INTERVAL_SECONDS: "30"
+        BASELINE_WINDOW: 15m
+        ZSCORE_THRESHOLD: "3.0"
+      ports:
+        - "9805:9805" # for ad hoc `curl http://localhost:9805/metrics` from Windows
+
   links:
     # Data-plane link between the two nodes. This is the path
     # component #2 will stream gNMI telemetry from.

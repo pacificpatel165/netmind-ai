@@ -35,6 +35,34 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-10 (15) — Component #5 stage 1: closed out
+**Focus:** Confirm the anomaly detector is producing real z-scores against real telemetry.
+**Verified — stage 1 exit criterion met:** User confirmed anomalies are visible on the Grafana "Anomaly detection" row after the local `docker build` + redeploy. Component #5 stage 1 is done: `detector.py` computing rolling z-scores from live Prometheus data, flowing through to `netmind_anomaly_*` metrics and rendering in the dashboard, exactly as designed in entry (14).
+**Updated:** `docs/architecture/component-diagram.md` and the published artifact (anomaly-detector row/pill moved from "built, unverified" to "verified"; diagram status note updated).
+**Next:** Component #6 — retrieval index. Per the roadmap: runbooks/past incidents chunked, embedded, and stored in a vector DB (Chroma or pgvector), running continuously in the background. First component that needs an embedding model and a vector store, neither of which exist in the stack yet.
+**Open questions:** Component #5's threshold (default z-score 3.0) is still unvalidated against a real anomaly event (see `docs/roadmap/BACKLOG.md` item 13) — worth a deliberate test later (e.g. manually flapping a link) once there's time, but not blocking component #6.
+
+### 2026-09-10 (14) — Component #5 kickoff: anomaly detection
+**Focus:** Design and build the first version of anomaly detection — the first intelligence-layer component, opening phase 5.
+**Decided:**
+- Scope: **interface counters only** (traffic rate, errors, discards, link/carrier transitions) — the metrics already in the pipeline, no new telemetry. Admin/oper state flap detection deliberately saved for a stage 2 (see `docs/roadmap/BACKLOG.md` item 14).
+- Algorithm: **rolling-baseline z-score, no ML/LLM.** `avg_over_time`/`stddev_over_time` PromQL subqueries compute the baseline; the service's own job is orchestration and turning the result into a metric, not reimplementing statistics Prometheus already provides. A real model comes later, once this baseline's actual limits are understood from real data — not chosen speculatively now.
+- Deployment: **standalone containerized service, not a Prometheus recording rule.** A recording rule could do the same math in pure config, but this component is meant to *become* the real-model version later, and a recording rule has nowhere to host a trained model — a service does.
+- Output: **writes back to Prometheus** as its own metrics (`netmind_anomaly_*` on `:9805`), scraped like every other component — zero new dashboard plumbing.
+- Structure: new **`intelligence/`** top-level directory (not a bare `anomaly-detection/`), since components #6–8 are also intelligence-layer per the Component map — avoids a reshuffle later.
+**Built:**
+- `intelligence/anomaly-detection/detector.py` — queries Prometheus for current rate + rolling mean/stddev per watched counter, computes a z-score per interface, exposes `netmind_anomaly_score`/`_detected`/`_baseline_mean`/`_baseline_stddev` gauges on `:9805`.
+- `intelligence/anomaly-detection/Dockerfile`, `requirements.txt` — no public image exists for this (it's project code); must be built locally before first deploy.
+- `intelligence/anomaly-detection/README.md` — the decisions above, the full metric list, build/run/verify instructions.
+- `lab/topologies/netmind-2node.clab.yml` — added the `anomaly-detector` node (`netmind-anomaly-detector:latest`, built locally, port 9805 published).
+- `metrics/prometheus/prometheus.yml` — added a `netmind-anomaly-detector` scrape job.
+- `grafana/dashboards/netmind-overview.json` — new "Anomaly detection" row: z-scores per interface/counter (timeseries with a threshold line at the default flag boundary) and a table of currently flagged anomalies.
+- `docs/architecture/component-diagram.md` and the published artifact — added the anomaly-detector node with its bidirectional relationship to Prometheus (queries it for baseline, is scraped by it for its own score) — the first component in this diagram that isn't purely one-directional pull.
+- `docs/roadmap/BACKLOG.md` — items 13–15 (unvalidated z-score threshold, admin/oper state detection deferred to stage 2, local image-tag pinning) plus an installation-index row flagging the required local `docker build` step.
+**Not yet built:** none of this has been deploy-tested this session (written without shell access) — first deploy needs the `docker build` step run manually before `clab deploy`, since there's no registry to pull from.
+**Next:** `docker build -t netmind-anomaly-detector:latest .` from `intelligence/anomaly-detection/`, then full redeploy and verify `netmind_anomaly_*` metrics appear in Prometheus and the new Grafana row — that's the exit criterion for component #5 stage 1.
+**Open questions:** none blocking.
+
 ### 2026-09-10 (13) — Component #4 stage 1: closed out
 **Focus:** Confirm the NetMind Overview dashboard actually renders against real Prometheus data after the full metric set was added.
 **Verified — stage 1 exit criterion met:** User confirmed the dashboard is rendering at `http://localhost:3000`. Component #4 (dashboards) stage 1 is done: Grafana provisioned as code, all 22 confirmed `netmind_*` metrics covered across the Overview dashboard's five rows (pipeline health, admin/oper state, traffic, errors & transitions, packet types, additional counters).

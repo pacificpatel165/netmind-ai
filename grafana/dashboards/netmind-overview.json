@@ -1,7 +1,7 @@
 {
   "uid": "netmind-overview",
   "title": "NetMind Overview",
-  "description": "Component #4 — first dashboard on top of the verified gnmic -> Prometheus pipeline (components #2/#3). Metric names below were read directly from Prometheus's metric browser on 2026-09-10, not guessed: subscription name 'interface-state' + metric-prefix 'netmind' produced netmind_interface_state_srl_nokia_interfaces_interface_<leaf>. Covers the full statistics leaf set gnmic exposed (admin/oper state, octets, packets, unicast/multicast/broadcast breakdown, errors, discards, FCS errors, link/carrier/interface transitions, mirrored traffic). Panels assume gnmic's standard labels for a YANG list key ('name' = interface name) and target ('source'); if a panel comes up empty, open Explore on the raw metric and check the actual label names before editing the query.",
+  "description": "Component #4's dashboard on top of the verified gnmic -> Prometheus pipeline (components #2/#3), extended with component #5's anomaly-detection row. Interface metric names were read directly from Prometheus's metric browser on 2026-09-10, not guessed: subscription name 'interface-state' + metric-prefix 'netmind' produced netmind_interface_state_srl_nokia_interfaces_interface_<leaf>. Covers the full statistics leaf set gnmic exposed (admin/oper state, octets, packets, unicast/multicast/broadcast breakdown, errors, discards, FCS errors, link/carrier/interface transitions, mirrored traffic), plus the netmind_anomaly_* metrics from intelligence/anomaly-detection/detector.py. Panels assume gnmic's standard labels for a YANG list key ('name' = interface name) and target ('source'); if a panel comes up empty, open Explore on the raw metric and check the actual label names before editing the query.",
   "tags": ["netmind", "component-4"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -217,6 +217,47 @@
       ],
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 18,
+      "type": "row",
+      "title": "Anomaly detection (component #5)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Z-scores per interface / counter",
+      "description": "netmind_anomaly_score from intelligence/anomaly-detection/detector.py — current rate vs. a rolling 15m mean/stddev, computed per counter (in_octets, out_error_packets, link_transitions, ...). Should sit near zero on a quiet lab; the shaded threshold lines mark the default |z| > 3 flag boundary.",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 51 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "netmind_anomaly_score", "legendFormat": "{{interface}} {{stat}}" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "thresholdsStyle": { "mode": "line" } },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 3 }] }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "Currently flagged anomalies",
+      "description": "netmind_anomaly_detected == 1 — empty is the healthy state. A row here means |z-score| exceeded ZSCORE_THRESHOLD (default 3.0) on the most recent evaluation cycle.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 51 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "netmind_anomaly_detected == 1", "format": "table", "instant": true }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true }
     }
   ]
 }

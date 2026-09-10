@@ -2,7 +2,7 @@
 
 Living diagram of how components connect, which platform each one runs on,
 and how data moves between them. Update this file *and* the published
-artifact below together as components #4–11 come online — don't let
+artifact below together as components #6–11 come online — don't let
 either drift out of sync with `PROGRESS_LOG.md` (the decisions behind
 any change here) or `docs/roadmap/BACKLOG.md` (anything deferred rather
 than built).
@@ -22,6 +22,7 @@ flowchart TB
     classDef collector fill:#FDEEDC,stroke:#C2660A,color:#7A3E06
     classDef metrics fill:#FBE7E4,stroke:#B42318,color:#7A241A
     classDef dashboard fill:#DBEAFE,stroke:#1D4ED8,color:#1E3A8A
+    classDef intelligence fill:#F3E8FF,stroke:#7E22CE,color:#4C1D7A
     classDef planned fill:#EDEFF3,stroke:#94A0AD,color:#5B6472,stroke-dasharray: 4 3
 
     REPO["C:\MyWorkSpace\...\NetMind-AI<br/>git repo (source of truth)"]:::host
@@ -36,6 +37,7 @@ flowchart TB
                 GNMIC["gnmic collector<br/>.20 · :9804 /metrics"]:::collector
                 PROM["Prometheus<br/>.30 · :9090 UI"]:::metrics
                 GRAFANA["Grafana<br/>.40 · :3000 UI"]:::dashboard
+                ANOMALY["anomaly-detector<br/>.50 · :9805 /metrics<br/>(built locally, no public image)"]:::intelligence
             end
             OUT["telemetry/output/netmind-telemetry.jsonl"]:::distro
         end
@@ -50,15 +52,17 @@ flowchart TB
     GNMIC -->|writes JSON| OUT
     PROM -->|"GET /metrics every 10s"| GNMIC
     GRAFANA -->|"queries (datasource)"| PROM
+    ANOMALY -->|"PromQL: rate + rolling avg/stddev"| PROM
+    PROM -->|"GET /metrics every 10s"| ANOMALY
 ```
 
-**Status note:** Components #1–4 are all confirmed working as of
-2026-09-10. Grafana (component #4) is provisioned as code (datasource
-+ dashboard JSON auto-loaded, no manual UI setup) and its dashboard is
-rendering live panels against real telemetry — see `PROGRESS_LOG.md`
-entry (13). Direct scrape (no Kafka buffer) and default 15-day
-retention were both deliberate choices, not oversights — see
-`docs/roadmap/BACKLOG.md` items 1–2 for why and when to revisit.
+**Status note:** Components #1–5 are all confirmed working as of
+2026-09-10 &mdash; component #5 (anomaly detection) is producing real
+z-scores, visible in Grafana's "Anomaly detection" row, see
+`PROGRESS_LOG.md` entry (15). Direct scrape (no Kafka buffer) and
+default 15-day retention were both deliberate choices, not
+oversights — see `docs/roadmap/BACKLOG.md` items 1–2 for why and when
+to revisit.
 
 ## How the subscription actually works
 
@@ -93,9 +97,20 @@ dashboard panel needs data (on load, and every 10s while the dashboard
 auto-refreshes). Nothing is pushed into Grafana; it's provisioned with
 Prometheus as a datasource and pulls on demand.
 
+**The anomaly detector has a relationship with Prometheus in *both*
+directions**, unlike Grafana. As a client, it queries Prometheus's
+PromQL API every `EVAL_INTERVAL_SECONDS` (default 30s) for the current
+rate and the rolling `avg_over_time`/`stddev_over_time` baseline of
+each watched counter, computing a z-score itself rather than asking
+Prometheus for one directly. As a server, it exposes that z-score back
+on its own `:9805/metrics` endpoint, which Prometheus then scrapes on
+its normal 10s cycle — the same shape as gnmic, just one hop further
+downstream. See `intelligence/anomaly-detection/README.md` for why a
+standalone service was chosen over a Prometheus recording rule.
+
 ## Component status
 
-Extend this table as components #4–11 come online. Anything listed as
+Extend this table as components #6–11 come online. Anything listed as
 "planned" with no further detail has its full description in
 `PROGRESS_LOG.md`'s Component map; anything deliberately simplified has
 its reasoning in `docs/roadmap/BACKLOG.md`.
@@ -109,4 +124,5 @@ its reasoning in `docs/roadmap/BACKLOG.md`.
 | sync-to-lab.sh | Windows ↔ WSL2 boundary | copies the repo to native fs before every deploy | — | ✅ verified |
 | Prometheus | Containerlab distro (Docker container) | metrics store — scrapes gnmic directly, no persistence yet | 172.100.100.30 · :9090 | ✅ verified |
 | Grafana | Containerlab distro (Docker container) | dashboards on top of Prometheus, provisioned as code | 172.100.100.40 · :3000 | ✅ verified |
+| anomaly-detector | Containerlab distro (Docker container, built locally) | rolling z-score anomaly detection on interface counters, no ML/LLM yet | 172.100.100.50 · :9805 | ✅ verified |
 | k3s + Cilium | not yet built (same Containerlab distro) | K8s underlay, attaches to reserved `e1-2` | — | ⏳ planned · phase 2 |

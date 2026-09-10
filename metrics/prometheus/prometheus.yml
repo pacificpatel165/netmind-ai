@@ -18,3 +18,11 @@ scrape_configs:
   - job_name: netmind-gnmic
     static_configs:
       - targets: ["clab-netmind-2node-gnmic:9804"]
+
+  # Component #5 (anomaly detection) — scrapes the z-score/baseline
+  # metrics the detector computes from *this same* Prometheus's data,
+  # exposed back on its own endpoint. See
+  # intelligence/anomaly-detection/README.md.
+  - job_name: netmind-anomaly-detector
+    static_configs:
+      - targets: ["clab-netmind-2node-anomaly-detector:9805"]
