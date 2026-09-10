@@ -87,6 +87,25 @@ topology:
       ports:
         - "9090:9090" # so the Prometheus UI is reachable at http://localhost:9090 from Windows
 
+    # Component #4: dashboards. Provisioned as code — datasource and
+    # dashboard JSON are both committed under grafana/provisioning/ and
+    # grafana/dashboards/, auto-loaded on container start rather than
+    # clicked together in the UI. See grafana/README.md.
+    grafana:
+      kind: linux
+      image: grafana/grafana:latest # verify tag resolves on first deploy, like gnmic's/prometheus's images were
+      mgmt-ipv4: 172.100.100.40
+      binds:
+        - ../../grafana/provisioning:/etc/grafana/provisioning:ro
+        - ../../grafana/dashboards:/var/lib/grafana/dashboards:ro
+      env:
+        GF_SECURITY_ADMIN_USER: admin
+        GF_SECURITY_ADMIN_PASSWORD: NetMindGrafana1! # lab-only credential, not a production secret
+        GF_AUTH_ANONYMOUS_ENABLED: "true" # convenience for local lab viewing; not meant for anything beyond localhost
+        GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      ports:
+        - "3000:3000" # Grafana UI reachable at http://localhost:3000 from Windows
+
   links:
     # Data-plane link between the two nodes. This is the path
     # component #2 will stream gNMI telemetry from.

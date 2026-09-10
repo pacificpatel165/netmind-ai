@@ -1,0 +1,16 @@
+# Component #4 — tells Grafana to auto-load any dashboard JSON dropped
+# into grafana/dashboards/ (bind-mounted to /var/lib/grafana/dashboards
+# in the container) rather than requiring an import through the UI.
+
+apiVersion: 1
+
+providers:
+  - name: NetMind dashboards
+    orgId: 1
+    folder: NetMind
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true # edits made in the UI persist to Grafana's own DB; re-provisioning won't silently overwrite them
+    options:
+      path: /var/lib/grafana/dashboards

@@ -51,11 +51,10 @@ flowchart TB
     PROM -.->|next: dashboards| GRAFANA
 ```
 
-**Status note:** Prometheus and its scrape of gnmic are *built* as of
-2026-09-10 but not yet deploy-verified in this diagram's source session
-— see `PROGRESS_LOG.md` entry (9) and `metrics/README.md` for what
-"verified" will mean once confirmed. Direct scrape (no Kafka buffer)
-and default 15-day retention were both deliberate choices, not
+**Status note:** Prometheus and its scrape of gnmic are confirmed
+working as of 2026-09-10 — component #3 stage 1 is closed out, see
+`PROGRESS_LOG.md` entry (11). Direct scrape (no Kafka buffer) and
+default 15-day retention were both deliberate choices, not
 oversights — see `docs/roadmap/BACKLOG.md` items 1–2 for why and when
 to revisit.
 
@@ -97,9 +96,9 @@ its reasoning in `docs/roadmap/BACKLOG.md`.
 |---|---|---|---|---|
 | srl1 | Containerlab distro (Docker container) | gNMI target — network device under observation | 172.100.100.11 : 57400 | ✅ verified |
 | srl2 | Containerlab distro (Docker container) | gNMI target — network device under observation | 172.100.100.12 : 57400 | ✅ verified |
-| gnmic | Containerlab distro (Docker container) | gNMI collector — subscribes & writes telemetry + exposes Prometheus metrics | 172.100.100.20 · :9804 | ✅ verified (file output) · Prometheus output built, unverified |
+| gnmic | Containerlab distro (Docker container) | gNMI collector — subscribes & writes telemetry + exposes Prometheus metrics | 172.100.100.20 · :9804 | ✅ verified (file + Prometheus output) |
 | netmind-mgmt | Containerlab distro (Docker bridge network) | connectivity between all containers | 172.100.100.0/24 | ✅ verified |
 | sync-to-lab.sh | Windows ↔ WSL2 boundary | copies the repo to native fs before every deploy | — | ✅ verified |
-| Prometheus | Containerlab distro (Docker container) | metrics store — scrapes gnmic directly, no persistence yet | 172.100.100.30 · :9090 | 🔧 built, not yet verified |
+| Prometheus | Containerlab distro (Docker container) | metrics store — scrapes gnmic directly, no persistence yet | 172.100.100.30 · :9090 | ✅ verified |
 | Grafana | not yet built | dashboards on top of Prometheus | — | ⏳ planned · #4 |
 | k3s + Cilium | not yet built (same Containerlab distro) | K8s underlay, attaches to reserved `e1-2` | — | ⏳ planned · phase 2 |

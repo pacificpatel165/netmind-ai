@@ -35,6 +35,30 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-10 (12) — Component #4 kickoff: dashboards
+**Focus:** Design and build the first version of the dashboard layer on top of the now-verified Prometheus.
+**Decided:**
+- Deployment: **containerized, in the topology** — same pattern as `gnmic`/`prometheus`, its own node (`grafana`) stood up/torn down with the rest of the lab.
+- Dashboards: **provisioned as code**, not built by hand in the UI — datasource and dashboard JSON both committed to `grafana/` and auto-loaded via Grafana's provisioning system, matching how `gnmic.yaml`/`prometheus.yml` are already handled.
+- Access: anonymous viewer enabled for local convenience (`http://localhost:3000`, no login), admin credentials still set for editing — explicitly flagged as a lab-only posture, not a production pattern (see `docs/roadmap/BACKLOG.md` item 12).
+**Built:**
+- `lab/topologies/netmind-2node.clab.yml` — added the `grafana` node (`grafana/grafana:latest`, port 3000 published, provisioning + dashboards bind-mounted).
+- `grafana/provisioning/datasources/prometheus.yml` — auto-registers the `prometheus` container as Grafana's datasource.
+- `grafana/provisioning/dashboards/dashboards.yml` — auto-loads any dashboard JSON from `grafana/dashboards/` into a "NetMind" folder.
+- `grafana/README.md` — the decisions above, layout, running/verifying instructions.
+- `docs/roadmap/BACKLOG.md` — item 6 (image-tag pinning) extended to cover `grafana/grafana`; new item 12 for the lab-only auth posture.
+**Not yet built:** the actual dashboard JSON (`grafana/dashboards/`) — panel queries need the real `netmind_*` metric names as they appear in Prometheus (subscription name `interface-state`, prefix `netmind`, exact naming depends on gnmic's path-to-metric conversion, not yet confirmed against real scrape output). Waiting on the user to paste the metric list from Prometheus's metric browser before finalizing panel PromQL, rather than guessing and shipping a dashboard with broken queries.
+**Hit and fixed:** first redeploy attempt failed — `Failed to verify bind path: stat .../grafana/dashboards: no such file or directory`. `grafana/dashboards/` was empty (no dashboard JSON committed yet) and git doesn't track empty directories, so the bind-mounted folder never made it into the synced repo. Same class of bug as component #2's missing `/var/log/gnmic`; same fix — added a tracked `grafana/dashboards/.gitkeep`.
+**Next:** Finalize `grafana/dashboards/netmind-overview.json` once real metric names are confirmed, then full redeploy and verify `http://localhost:3000` shows live panels.
+**Open questions:** none blocking — one open input needed from the user (real metric names) before the dashboard JSON can be finished.
+
+### 2026-09-10 (11) — Component #3 stage 1: closed out
+**Focus:** Confirm Prometheus is actually scraping gnmic after the full redeploy.
+**Verified — stage 1 exit criterion met:** User confirmed the redeploy worked as expected — `netmind-gnmic` shows `UP` under Prometheus Status → Targets, and `netmind_`-prefixed series return for both `srl1` and `srl2`. Component #3 (metrics store) stage 1 is done: direct scrape, no Kafka, default retention, all as designed in entry (9).
+**Updated:** `docs/architecture/component-diagram.md`, the published artifact, and `docs/roadmap/BACKLOG.md` (item 10 moved to Resolved) to reflect Prometheus as fully verified rather than built-but-unverified.
+**Next:** Component #4 — dashboards (Grafana on top of Prometheus). Lower design complexity than #1–#3; the point is making the pipeline visibly real, not new protocol learning.
+**Open questions:** none blocking.
+
 ### 2026-09-10 (10) — Backlog captured, diagram updated for component #3
 **Focus:** Durably record every deferred decision made so far (Kafka, retention, Kubernetes timing, image pinning, and more) so "we'll fix it later" doesn't quietly get lost between sessions, plus bring the diagram (both the Mermaid source and the published artifact) up to date with component #3's build.
 **Built:**

@@ -1,0 +1,16 @@
+# Component #4 — auto-provisions Prometheus as Grafana's datasource on
+# container start. No manual "Add datasource" click in the UI, matching
+# how gnmic and Prometheus are both config-driven rather than
+# hand-configured through a GUI.
+
+apiVersion: 1
+
+datasources:
+  - name: NetMind Prometheus
+    type: prometheus
+    access: proxy
+    # Same docker network (netmind-mgmt) as gnmic/Prometheus — reachable
+    # by container name, same pattern prometheus.yml uses for gnmic.
+    url: http://clab-netmind-2node-prometheus:9090
+    isDefault: true
+    editable: false
