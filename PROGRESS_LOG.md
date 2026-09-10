@@ -35,6 +35,25 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-10 (16) — Component #6 kickoff: retrieval index
+**Focus:** Design and build the first version of the retrieval index — the first intelligence-layer component that isn't a straightforward extension of the existing telemetry pipeline.
+**Decided:**
+- Corpus: **this project's own docs**, not invented runbooks — every README/design doc written so far. Real content that exists today, and doubles as a natural test corpus for component #7 (diagnosis assistant) later.
+- Vector store: **Chroma, containerized**, same "own node in the topology" pattern as every prior component. No persistent volume yet — same deliberate simplification as Prometheus in component #3.
+- Embeddings: **Chroma's built-in default function (ONNX MiniLM-L6-v2)**, not sentence-transformers + torch — same underlying model family, much lighter container, no external API/key.
+- Ingestion/query: **on-demand scripts, not topology nodes.** Only Chroma itself needs to stay running continuously; chunking/embedding/querying are cheap and idempotent, run via `docker run` against the lab's network when needed. Automatic/scheduled re-ingest deliberately deferred (see `docs/roadmap/BACKLOG.md` item 17).
+**Built:**
+- `intelligence/retrieval-index/ingest.py` — chunks the docs listed in `DOC_GLOBS`, embeds them, upserts into Chroma's `netmind-docs` collection. Idempotent (deterministic chunk ids).
+- `intelligence/retrieval-index/query.py` — the verification tool: embeds a question, runs a similarity search, prints top matches with source + distance so relevance can be judged by eye.
+- `intelligence/retrieval-index/Dockerfile`, `requirements.txt`, `README.md` — the decisions above, build/run/verify instructions.
+- `lab/topologies/netmind-2node.clab.yml` — added the `chroma` node (`chromadb/chroma:latest`, port 8000 published).
+- `docs/architecture/component-diagram.md` and the published artifact — added Chroma and the ingest/query tooling, the first component pair with *no* Prometheus/Grafana involvement at all — a genuinely separate axis from every prior component.
+- `docs/roadmap/BACKLOG.md` — items 16–18 (Chroma persistence, automatic re-ingestion, retrieval quality beyond one ad hoc query) plus installation-index rows for Chroma and the retrieval tooling.
+**Not yet built:** none of this has been deploy-tested this session (written without shell access) — first use needs two local `docker build` steps (the `chroma` image is pulled, but `netmind-retrieval-tools` is project code) before `ingest.py` can run.
+**Hit and fixed:** first `ingest.py` run failed on the very first `get_or_create_collection` call — `KeyError: '_type'` inside `CollectionConfigurationInternal.from_json` (plus an unrelated telemetry warning, harmless). Root cause: the topology pulled `chromadb/chroma:latest`, which resolved to a much newer server than the `chromadb==0.5.23` client pinned in `requirements.txt` — the collection-config JSON schema changed between versions, and the older client couldn't parse the newer server's response. Fixed by pinning the server image to `chromadb/chroma:0.5.23`, matching the client exactly, in `lab/topologies/netmind-2node.clab.yml`.
+**Next:** Redeploy with the pinned image, re-run `ingest.py`, then `query.py` with a real question and check the results are actually relevant — that's the exit criterion for component #6 stage 1.
+**Open questions:** none blocking.
+
 ### 2026-09-10 (15) — Component #5 stage 1: closed out
 **Focus:** Confirm the anomaly detector is producing real z-scores against real telemetry.
 **Verified — stage 1 exit criterion met:** User confirmed anomalies are visible on the Grafana "Anomaly detection" row after the local `docker build` + redeploy. Component #5 stage 1 is done: `detector.py` computing rolling z-scores from live Prometheus data, flowing through to `netmind_anomaly_*` metrics and rendering in the dashboard, exactly as designed in entry (14).

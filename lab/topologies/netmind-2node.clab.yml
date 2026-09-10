@@ -127,6 +127,30 @@ topology:
       ports:
         - "9805:9805" # for ad hoc `curl http://localhost:9805/metrics` from Windows
 
+    # Component #6: retrieval index. Vector store for this project's own
+    # docs (README/design docs), chunked + embedded by
+    # intelligence/retrieval-index/ingest.py and queried by query.py —
+    # see intelligence/retrieval-index/README.md. Ingestion/query are
+    # run on demand (docker run against this network), not topology
+    # nodes of their own — only the store itself needs to stay up.
+    #
+    # No persistent volume yet, same deliberate simplification as
+    # Prometheus in component #3 — re-run ingest.py after every
+    # redeploy rather than solving storage-permission ownership before
+    # the retrieval pattern itself is proven. See docs/roadmap/BACKLOG.md.
+    chroma:
+      kind: linux
+      # Pinned, not :latest — the netmind-retrieval-tools client is
+      # built against chromadb==0.5.23, and :latest resolved to a much
+      # newer server whose collection-config JSON schema that client
+      # can't parse (KeyError: '_type' in CollectionConfigurationInternal.from_json).
+      # Server and client versions have to move together; see
+      # intelligence/retrieval-index/README.md.
+      image: chromadb/chroma:0.5.23
+      mgmt-ipv4: 172.100.100.60
+      ports:
+        - "8000:8000" # Chroma's REST API, reachable from Windows for ad hoc checks
+
   links:
     # Data-plane link between the two nodes. This is the path
     # component #2 will stream gNMI telemetry from.

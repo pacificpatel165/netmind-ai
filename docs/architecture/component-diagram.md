@@ -2,7 +2,7 @@
 
 Living diagram of how components connect, which platform each one runs on,
 and how data moves between them. Update this file *and* the published
-artifact below together as components #6–11 come online — don't let
+artifact below together as components #7–11 come online — don't let
 either drift out of sync with `PROGRESS_LOG.md` (the decisions behind
 any change here) or `docs/roadmap/BACKLOG.md` (anything deferred rather
 than built).
@@ -38,8 +38,10 @@ flowchart TB
                 PROM["Prometheus<br/>.30 · :9090 UI"]:::metrics
                 GRAFANA["Grafana<br/>.40 · :3000 UI"]:::dashboard
                 ANOMALY["anomaly-detector<br/>.50 · :9805 /metrics<br/>(built locally, no public image)"]:::intelligence
+                CHROMA["Chroma<br/>.60 · :8000 REST API"]:::intelligence
             end
             OUT["telemetry/output/netmind-telemetry.jsonl"]:::distro
+            INGEST["ingest.py / query.py<br/>docker run, on demand<br/>(not a topology node)"]:::muted
         end
     end
 
@@ -54,15 +56,19 @@ flowchart TB
     GRAFANA -->|"queries (datasource)"| PROM
     ANOMALY -->|"PromQL: rate + rolling avg/stddev"| PROM
     PROM -->|"GET /metrics every 10s"| ANOMALY
+    INGEST -.->|"embed + upsert / query"| CHROMA
 ```
 
 **Status note:** Components #1–5 are all confirmed working as of
-2026-09-10 &mdash; component #5 (anomaly detection) is producing real
-z-scores, visible in Grafana's "Anomaly detection" row, see
-`PROGRESS_LOG.md` entry (15). Direct scrape (no Kafka buffer) and
-default 15-day retention were both deliberate choices, not
-oversights — see `docs/roadmap/BACKLOG.md` items 1–2 for why and when
-to revisit.
+2026-09-10. Component #6 (retrieval index) is built &mdash; Chroma
+containerized, seeded with this project's own docs via `ingest.py`,
+queryable via `query.py` &mdash; but not yet deploy-verified in this
+diagram's source session; both the store and the tooling image need a
+local `docker build` before first use, see
+`intelligence/retrieval-index/README.md` and `PROGRESS_LOG.md` entry
+(16). Direct scrape (no Kafka buffer) and default 15-day retention
+were both deliberate choices, not oversights — see
+`docs/roadmap/BACKLOG.md` items 1–2 for why and when to revisit.
 
 ## How the subscription actually works
 
@@ -108,9 +114,19 @@ its normal 10s cycle — the same shape as gnmic, just one hop further
 downstream. See `intelligence/anomaly-detection/README.md` for why a
 standalone service was chosen over a Prometheus recording rule.
 
+**Chroma breaks the pull-only pattern entirely** — nothing scrapes it
+and it scrapes nothing. `ingest.py` and `query.py` are plain HTTP
+clients that connect to Chroma's REST API on demand (`docker run`
+against the `netmind-mgmt` network, dashed on the diagram because
+they're not a standing topology node), embed text locally with
+Chroma's default ONNX embedding function, and either upsert or query
+vectors. There's no Prometheus/Grafana involvement at all yet for this
+component — it's a separate axis (semantic search over docs) from the
+telemetry axis every other component so far has extended.
+
 ## Component status
 
-Extend this table as components #6–11 come online. Anything listed as
+Extend this table as components #7–11 come online. Anything listed as
 "planned" with no further detail has its full description in
 `PROGRESS_LOG.md`'s Component map; anything deliberately simplified has
 its reasoning in `docs/roadmap/BACKLOG.md`.
@@ -125,4 +141,6 @@ its reasoning in `docs/roadmap/BACKLOG.md`.
 | Prometheus | Containerlab distro (Docker container) | metrics store — scrapes gnmic directly, no persistence yet | 172.100.100.30 · :9090 | ✅ verified |
 | Grafana | Containerlab distro (Docker container) | dashboards on top of Prometheus, provisioned as code | 172.100.100.40 · :3000 | ✅ verified |
 | anomaly-detector | Containerlab distro (Docker container, built locally) | rolling z-score anomaly detection on interface counters, no ML/LLM yet | 172.100.100.50 · :9805 | ✅ verified |
+| Chroma | Containerlab distro (Docker container) | vector store for this project's own docs, no persistence yet | 172.100.100.60 · :8000 | 🔧 built, not yet verified |
+| ingest.py / query.py | Containerlab distro (docker run, on demand — built locally) | chunk+embed docs into Chroma / prove retrieval works | — | 🔧 built, not yet verified |
 | k3s + Cilium | not yet built (same Containerlab distro) | K8s underlay, attaches to reserved `e1-2` | — | ⏳ planned · phase 2 |
