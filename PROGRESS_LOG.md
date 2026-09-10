@@ -35,6 +35,13 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-10 (13) — Component #4 stage 1: closed out
+**Focus:** Confirm the NetMind Overview dashboard actually renders against real Prometheus data after the full metric set was added.
+**Verified — stage 1 exit criterion met:** User confirmed the dashboard is rendering at `http://localhost:3000`. Component #4 (dashboards) stage 1 is done: Grafana provisioned as code, all 22 confirmed `netmind_*` metrics covered across the Overview dashboard's five rows (pipeline health, admin/oper state, traffic, errors & transitions, packet types, additional counters).
+**Updated:** `docs/architecture/component-diagram.md` and the published artifact (Grafana row/pill moved from "built, unverified" to "verified"; diagram status note updated).
+**Next:** Component #5 — anomaly detection. Per the roadmap: a scheduled job, rolling baseline first, a real model (isolation forest or similar) only once the baseline's limits are understood. No LLM involved at this stage. This closes out phase 4 (telemetry: #1–#4) and opens phase 5 (the AI layer).
+**Open questions:** none blocking.
+
 ### 2026-09-10 (12) — Component #4 kickoff: dashboards
 **Focus:** Design and build the first version of the dashboard layer on top of the now-verified Prometheus.
 **Decided:**
