@@ -35,6 +35,13 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-10 (17) — Component #6 stage 1: closed out
+**Focus:** Confirm the retrieval index actually retrieves — real docs, chunked and embedded into Chroma, returning relevant results for a real question.
+**Verified — stage 1 exit criterion met:** After redeploying with the version-pinned Chroma image (`chromadb/chroma:0.5.23`, see entry 16's "Hit and fixed"), `ingest.py` completed successfully: `Ingested 141 chunks from 12 documents into collection 'netmind-docs'.` A follow-up `query.py "why was Kafka skipped for the metrics store?"` returned three genuinely relevant top matches — `docs/roadmap/BACKLOG.md` item 1 (the Kafka-deferral decision itself) and `metrics/README.md` (the direct-scrape design decision), at distances 0.95–1.05. This is real retrieval against real content, not just "the container started" — component #6 stage 1 is done.
+**Updated:** `docs/architecture/component-diagram.md` and the published artifact (Chroma and `ingest.py`/`query.py` rows/pill moved from "built, not yet verified" to "verified"; diagram status note updated). `docs/roadmap/BACKLOG.md` item 19 added — the ONNX embedding model (~79MB) gets re-downloaded on every `docker run` since `ingest.py`/`query.py` run via `--rm` and the container filesystem (and its `/root/.cache/chroma` cache) dies with it each time; deferred until retrieval is called often enough for the repeated ~40s download to actually matter.
+**Next:** Component #7 — diagnosis assistant: retrieval-grounded LLM, parallel vector search + structured Prometheus/log query assembled into a prompt, sent to a local model (Ollama), answered with citations. First real design discussion needed: which local model to run under Ollama, and how the structured Prometheus query side gets built (fixed PromQL templates vs. something more dynamic).
+**Open questions:** none blocking.
+
 ### 2026-09-10 (16) — Component #6 kickoff: retrieval index
 **Focus:** Design and build the first version of the retrieval index — the first intelligence-layer component that isn't a straightforward extension of the existing telemetry pipeline.
 **Decided:**

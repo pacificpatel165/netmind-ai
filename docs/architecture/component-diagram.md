@@ -59,14 +59,12 @@ flowchart TB
     INGEST -.->|"embed + upsert / query"| CHROMA
 ```
 
-**Status note:** Components #1–5 are all confirmed working as of
-2026-09-10. Component #6 (retrieval index) is built &mdash; Chroma
-containerized, seeded with this project's own docs via `ingest.py`,
-queryable via `query.py` &mdash; but not yet deploy-verified in this
-diagram's source session; both the store and the tooling image need a
-local `docker build` before first use, see
-`intelligence/retrieval-index/README.md` and `PROGRESS_LOG.md` entry
-(16). Direct scrape (no Kafka buffer) and default 15-day retention
+**Status note:** Components #1–6 are all confirmed working as of
+2026-09-10. Component #6 (retrieval index) is verified end to end:
+`ingest.py` chunked and embedded this project's own docs into Chroma
+(141 chunks from 12 documents), and `query.py` returned genuinely
+relevant results for a real question — see `PROGRESS_LOG.md` entry
+(17). Direct scrape (no Kafka buffer) and default 15-day retention
 were both deliberate choices, not oversights — see
 `docs/roadmap/BACKLOG.md` items 1–2 for why and when to revisit.
 
@@ -141,6 +139,6 @@ its reasoning in `docs/roadmap/BACKLOG.md`.
 | Prometheus | Containerlab distro (Docker container) | metrics store — scrapes gnmic directly, no persistence yet | 172.100.100.30 · :9090 | ✅ verified |
 | Grafana | Containerlab distro (Docker container) | dashboards on top of Prometheus, provisioned as code | 172.100.100.40 · :3000 | ✅ verified |
 | anomaly-detector | Containerlab distro (Docker container, built locally) | rolling z-score anomaly detection on interface counters, no ML/LLM yet | 172.100.100.50 · :9805 | ✅ verified |
-| Chroma | Containerlab distro (Docker container) | vector store for this project's own docs, no persistence yet | 172.100.100.60 · :8000 | 🔧 built, not yet verified |
-| ingest.py / query.py | Containerlab distro (docker run, on demand — built locally) | chunk+embed docs into Chroma / prove retrieval works | — | 🔧 built, not yet verified |
+| Chroma | Containerlab distro (Docker container) | vector store for this project's own docs, no persistence yet | 172.100.100.60 · :8000 | ✅ verified |
+| ingest.py / query.py | Containerlab distro (docker run, on demand — built locally) | chunk+embed docs into Chroma / prove retrieval works | — | ✅ verified |
 | k3s + Cilium | not yet built (same Containerlab distro) | K8s underlay, attaches to reserved `e1-2` | — | ⏳ planned · phase 2 |
