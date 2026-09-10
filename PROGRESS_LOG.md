@@ -35,6 +35,21 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-10 (8) — Component diagram published
+**Focus:** Visual diagram of how components #1 and #2 connect, which platform each runs on, and how the gNMI subscribe/publish exchange actually works.
+**Built:**
+- `docs/architecture/component-diagram.md` — git-tracked source of truth: a colored Mermaid diagram (nested boxes showing the Windows host → WSL2 → Ubuntu vs. Containerlab distro → docker network → srl1/srl2/gnmic hierarchy, plus the sync and subscribe/publish flows), the subscribe-mechanism explanation, and an extensible component-status table.
+- Published artifact "NetMind Signal Flow" (hand-authored SVG diagram, same content, styled for readability — nested platform boxes, color-coded arrows for data-plane link / gNMI protocol / collector file-write / repo sync / planned-future, legend, prose explanation, status table): https://claude.ai/code/artifact/675b4713-1dec-4fee-adbd-d834242e1c26
+**Design intent:** both are meant to grow together as components #3–11 land — the Mermaid file is what actually gets edited each session, the artifact gets republished to match. Neither should drift from `PROGRESS_LOG.md`.
+**Next:** keep extending both when component #3 (metrics store) design starts.
+**Open questions:** none blocking.
+
+### 2026-09-10 (7) — Component #2 stage 1: closed out
+**Focus:** Confirm the file-output fix (bind-mounting `telemetry/output/` onto `/var/log/gnmic`) actually resolved the streaming issue.
+**Verified — stage 1 exit criterion met:** Full redeploy succeeded, `tail -f ~/netmind-lab/telemetry/output/netmind-telemetry.jsonl` shows live interface-state events for both nodes arriving continuously. Data is correct: `ethernet-1/1` (the actual link between `srl1` and `srl2`) shows `admin-state: enable` / `oper-state: up` on both sides; all other interfaces (`1/2`–`1/8`) correctly show `disable`/`down`. Component #2 stage 1 — a reliable, containerized gNMI stream off the lab — is done.
+**Next:** Component #3 (metrics store — Prometheus, learning PromQL/retention rather than just wiring it up) is next in build order. Needs a design discussion: Prometheus deployment (containerized in the topology, same pattern as gnmic?), and how gnmic's output gets from file to Prometheus — add a `prometheus` output type to the existing subscription config (gnmic can expose a scrape endpoint directly), or route through Kafka as the roadmap's "+ Kafka buffer" note suggests. Not yet decided.
+**Open questions:** none blocking.
+
 ### 2026-09-10 (6) — Component #2: first successful deploy, fixed the file-output bug
 **Focus:** Get the `gnmic` collector actually deployed and streaming, debug why it wasn't.
 **Hit and fixed:**
