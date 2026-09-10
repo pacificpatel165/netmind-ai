@@ -2,9 +2,10 @@
 
 Living diagram of how components connect, which platform each one runs on,
 and how data moves between them. Update this file *and* the published
-artifact below together as components #3–11 come online — don't let
-either drift out of sync with `PROGRESS_LOG.md`, which is where the
-decisions behind any change here get recorded.
+artifact below together as components #4–11 come online — don't let
+either drift out of sync with `PROGRESS_LOG.md` (the decisions behind
+any change here) or `docs/roadmap/BACKLOG.md` (anything deferred rather
+than built).
 
 **Rendered, colorful version (read this one):**
 https://claude.ai/code/artifact/675b4713-1dec-4fee-adbd-d834242e1c26
@@ -19,6 +20,7 @@ flowchart TB
     classDef muted fill:#EDEFF3,stroke:#94A0AD,color:#5B6472,stroke-dasharray: 4 3
     classDef device fill:#E6F6F5,stroke:#0E7C7B,color:#0B4443
     classDef collector fill:#FDEEDC,stroke:#C2660A,color:#7A3E06
+    classDef metrics fill:#FBE7E4,stroke:#B42318,color:#7A241A
     classDef planned fill:#EDEFF3,stroke:#94A0AD,color:#5B6472,stroke-dasharray: 4 3
 
     REPO["C:\MyWorkSpace\...\NetMind-AI<br/>git repo (source of truth)"]:::host
@@ -30,11 +32,12 @@ flowchart TB
             subgraph NET["docker network: netmind-mgmt (172.100.100.0/24)"]
                 SRL1["srl1 — Nokia SR Linux<br/>.11 : 57400"]:::device
                 SRL2["srl2 — Nokia SR Linux<br/>.12 : 57400"]:::device
-                GNMIC["gnmic collector<br/>.20"]:::collector
+                GNMIC["gnmic collector<br/>.20 · :9804 /metrics"]:::collector
+                PROM["Prometheus<br/>.30 · :9090 UI"]:::metrics
             end
             OUT["telemetry/output/netmind-telemetry.jsonl"]:::distro
         end
-        PROM["Prometheus — component #3 (planned)"]:::planned
+        GRAFANA["Grafana — component #4 (planned)"]:::planned
     end
 
     REPO -->|sync-to-lab.sh cp| NATIVE
@@ -44,8 +47,17 @@ flowchart TB
     GNMIC -->|"① SubscribeRequest"| SRL2
     SRL2 -.->|"② stream every 10s"| GNMIC
     GNMIC -->|writes JSON| OUT
-    OUT -.->|next: metrics store| PROM
+    PROM -->|"GET /metrics every 10s"| GNMIC
+    PROM -.->|next: dashboards| GRAFANA
 ```
+
+**Status note:** Prometheus and its scrape of gnmic are *built* as of
+2026-09-10 but not yet deploy-verified in this diagram's source session
+— see `PROGRESS_LOG.md` entry (9) and `metrics/README.md` for what
+"verified" will mean once confirmed. Direct scrape (no Kafka buffer)
+and default 15-day retention were both deliberate choices, not
+oversights — see `docs/roadmap/BACKLOG.md` items 1–2 for why and when
+to revisit.
 
 ## How the subscription actually works
 
@@ -67,19 +79,27 @@ the pipe opened — it's a long-lived streaming pull, not gnmic polling on
 a timer. gnmic then converts each response into a compact JSON event and
 writes it to `output/netmind-telemetry.jsonl`, bind-mounted straight
 through to the WSL shell rather than staying locked inside the
-container.
+container — and, separately, exposes the same data as Prometheus-format
+metrics on `:9804`. Prometheus's relationship to gnmic is the opposite
+direction: **Prometheus is the client here** — it initiates a `GET
+/metrics` request against gnmic every 10 seconds (a pull, not a push),
+which is why the arrow points from Prometheus to gnmic rather than the
+other way around.
 
 ## Component status
 
-Extend this table as components #3–11 come online.
+Extend this table as components #4–11 come online. Anything listed as
+"planned" with no further detail has its full description in
+`PROGRESS_LOG.md`'s Component map; anything deliberately simplified has
+its reasoning in `docs/roadmap/BACKLOG.md`.
 
 | Component | Runs on | Role | Address / port | Status |
 |---|---|---|---|---|
 | srl1 | Containerlab distro (Docker container) | gNMI target — network device under observation | 172.100.100.11 : 57400 | ✅ verified |
 | srl2 | Containerlab distro (Docker container) | gNMI target — network device under observation | 172.100.100.12 : 57400 | ✅ verified |
-| gnmic | Containerlab distro (Docker container) | gNMI collector — subscribes & writes telemetry | 172.100.100.20 | ✅ verified |
-| netmind-mgmt | Containerlab distro (Docker bridge network) | connectivity between the three containers above | 172.100.100.0/24 | ✅ verified |
+| gnmic | Containerlab distro (Docker container) | gNMI collector — subscribes & writes telemetry + exposes Prometheus metrics | 172.100.100.20 · :9804 | ✅ verified (file output) · Prometheus output built, unverified |
+| netmind-mgmt | Containerlab distro (Docker bridge network) | connectivity between all containers | 172.100.100.0/24 | ✅ verified |
 | sync-to-lab.sh | Windows ↔ WSL2 boundary | copies the repo to native fs before every deploy | — | ✅ verified |
-| Prometheus | not yet built | metrics store — scrapes/ingests telemetry | — | ⏳ planned · #3 |
+| Prometheus | Containerlab distro (Docker container) | metrics store — scrapes gnmic directly, no persistence yet | 172.100.100.30 · :9090 | 🔧 built, not yet verified |
 | Grafana | not yet built | dashboards on top of Prometheus | — | ⏳ planned · #4 |
 | k3s + Cilium | not yet built (same Containerlab distro) | K8s underlay, attaches to reserved `e1-2` | — | ⏳ planned · phase 2 |

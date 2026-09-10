@@ -35,6 +35,16 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-10 (10) — Backlog captured, diagram updated for component #3
+**Focus:** Durably record every deferred decision made so far (Kafka, retention, Kubernetes timing, image pinning, and more) so "we'll fix it later" doesn't quietly get lost between sessions, plus bring the diagram (both the Mermaid source and the published artifact) up to date with component #3's build.
+**Built:**
+- `docs/roadmap/BACKLOG.md` — new file, two sections: an **Open/deferred** table (11 items — Kafka buffer, Prometheus retention/downsampling, Prometheus persistent storage, Kubernetes/k3s+Cilium timing, growing the lab past 2 nodes, pinning image tags, installing `rsync`, the systemd user-session warning, the Containerlab distro's shared SSH key, unverified gnmic→Prometheus metric names, and components #4–11 as a single pointer back to this file's Component map) each with why it was deferred and what "done" looks like when it's picked up; an empty **Resolved** section with instructions to move rows there instead of deleting them; and an **Installation index** table mapping everything installed so far to the doc where its actual steps live, so rebuilding the environment never means re-reading every session log.
+- `docs/architecture/component-diagram.md` — Prometheus moved from a "planned" ghost node to a real `metrics`-classed node in the Mermaid diagram, with its scrape-pull edge back to gnmic; the old "planned Prometheus" node replaced by "planned Grafana — component #4"; added a status note pointing at this entry and at `BACKLOG.md`; expanded the subscription-mechanism prose with a paragraph on the Prometheus pull direction; Component status table updated to match.
+- Published artifact "NetMind Signal Flow" (https://claude.ai/code/artifact/675b4713-1dec-4fee-adbd-d834242e1c26) republished to match: new metrics-red color tokens (light/dark), a Prometheus box added to the SVG (positioned to clear the existing gNMI Subscribe arrows), its scrape arrow, the Grafana "planned" box moved to originate from Prometheus instead of the output file, legend entry for the scrape arrow, updated prose, and the Component status table's gnmic/Prometheus/Grafana rows updated to reflect built-but-unverified vs. verified vs. planned.
+**Design intent:** `BACKLOG.md` is meant to be the single place that answers "what did we already think about and choose to skip" — the Component map in this file still owns "what's next," this new file owns "what we already looked at." Update both together going forward whenever a design discussion produces a deliberate simplification.
+**Next:** The user still needs to actually redeploy and verify component #3 (full `sync-to-lab.sh` + `clab destroy --cleanup` + `clab deploy`, then check `http://localhost:9090` Status → Targets and query `netmind_`-prefixed metrics) — that's still open from entry (9), independent of this session's documentation work.
+**Open questions:** none blocking.
+
 ### 2026-09-10 (9) — Component #3 kickoff: metrics store design
 **Focus:** Design and build the first version of the metrics store.
 **Decided:**
