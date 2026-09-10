@@ -118,20 +118,20 @@ with error_code = 1 [Operation not permitted]
 
 Cause: WSL2's DrvFs (the `/mnt/c/...` view of the Windows drive) doesn't
 support the POSIX permission bits SR Linux needs to chmod its own config
-files during commit. Fix: always copy the topology file to a native
-Linux path before deploying —
+files during commit. Fix: always sync the repo to a native Linux path
+before deploying — use `scripts/sync-to-lab.sh` rather than copying
+files by hand, since topologies can bind-mount other files (e.g.
+`telemetry/collectors/gnmic.yaml` for component #2) that need to move
+along with them:
 
 ```bash
-mkdir -p ~/netmind-lab/topologies
-cp /mnt/c/MyWorkSpace/AI-Projects/NetMind-AI/lab/topologies/<file>.clab.yml ~/netmind-lab/topologies/
-cd ~/netmind-lab/topologies
+bash /mnt/c/MyWorkSpace/AI-Projects/NetMind-AI/scripts/sync-to-lab.sh
+cd ~/netmind-lab/lab/topologies
 sudo clab deploy -t <file>.clab.yml
 ```
 
-Edit the topology in the repo (so git/the device bridge sees it), then
-re-copy before the next deploy. This is annoying enough that it's worth
-a small sync script once there are more than one or two topology files
-— not built yet.
+Edit files in the repo (so git/the device bridge sees them), then
+re-run the sync script before the next deploy.
 
 ## 8. Install gnmic (gNMI CLI client)
 

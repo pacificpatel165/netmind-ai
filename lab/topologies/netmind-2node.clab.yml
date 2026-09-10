@@ -18,14 +18,16 @@
 # the POSIX permission bits SR Linux needs to chmod its own config files
 # during commit, which makes postdeploy fail with "Setting permissions
 # for file '/etc/opt/srlinux/config.tmp' failed ... [Operation not
-# permitted]". This file is the source of truth (kept in git on the
-# Windows drive so it's reachable from other tooling), but always copy
-# it to a native path before deploying:
+# permitted]". This file (and the gnmic config it bind-mounts below) are
+# the source of truth, kept in git on the Windows drive — but always
+# sync the whole repo to a native path before deploying:
 #
-#   mkdir -p ~/netmind-lab/topologies
-#   cp /mnt/c/MyWorkSpace/AI-Projects/NetMind-AI/lab/topologies/netmind-2node.clab.yml ~/netmind-lab/topologies/
-#   cd ~/netmind-lab/topologies
+#   bash /mnt/c/MyWorkSpace/AI-Projects/NetMind-AI/scripts/sync-to-lab.sh
+#   cd ~/netmind-lab/lab/topologies
 #   sudo clab deploy -t netmind-2node.clab.yml
+#
+# (sync-to-lab.sh mirrors the whole repo, not just this file, because
+# the gnmic bind mount below needs its config alongside it on native fs.)
 #
 # Destroy:
 #   sudo clab destroy -t netmind-2node.clab.yml --cleanup
@@ -37,6 +39,10 @@ topology:
     srl:
       image: ghcr.io/nokia/srlinux:latest
       type: ixr-d2 # containerlab warns "ixrd2" is deprecated (removed after Jan 2026); this is the current dashed form
+    linux:
+      # gnmic's official image. Verify this tag still resolves on first
+      # deploy — pin it once confirmed rather than tracking `latest`.
+      image: ghcr.io/openconfig/gnmic:latest
 
   nodes:
     srl1:
@@ -45,6 +51,24 @@ topology:
     srl2:
       kind: srl
       mgmt-ipv4: 172.100.100.12
+
+    # Component #2: telemetry collector. Subscribes to srl1/srl2 over
+    # gNMI (they're reachable on the shared netmind-mgmt network below)
+    # and writes to a file for now — see telemetry/collectors/gnmic.yaml
+    # and telemetry/README.md for the subscription design.
+    gnmic:
+      kind: linux
+      mgmt-ipv4: 172.100.100.20
+      binds:
+        - ../../telemetry/collectors/gnmic.yaml:/etc/gnmic/gnmic.yaml:ro
+        # /var/log/gnmic doesn't exist in the image and gnmic's file
+        # output won't create a missing parent dir (fails silently at
+        # default log level — only visible with --debug). Bind-mounting
+        # a host dir onto it both fixes that (docker creates the mount
+        # point) and makes the output readable from the WSL shell
+        # directly, no docker exec required.
+        - ../../telemetry/output:/var/log/gnmic
+      cmd: subscribe --config /etc/gnmic/gnmic.yaml
 
   links:
     # Data-plane link between the two nodes. This is the path

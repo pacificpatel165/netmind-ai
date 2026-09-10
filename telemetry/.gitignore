@@ -1,0 +1,3 @@
+# Generated telemetry data, not source — keep the directory, ignore its contents.
+output/*
+!output/.gitkeep

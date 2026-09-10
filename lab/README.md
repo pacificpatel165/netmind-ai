@@ -20,13 +20,12 @@ kernel-namespace conflicts between Docker Desktop's WSL integration and
 containerlab's direct netns/veth manipulation. Docker Desktop's WSL
 integration is left OFF for the `Containerlab` distro.
 
-To work in the lab, **always deploy from a native Linux path, not `/mnt/c/...`**: WSL2's DrvFs (the Windows-drive mount) doesn't support the POSIX permission bits SR Linux needs to chmod its own config files during commit, which breaks postdeploy with an "Operation not permitted" error. The topology file lives in git on the Windows drive (so other tooling can reach it), but gets copied to `~/netmind-lab/` before deploying:
+To work in the lab, **always deploy from a native Linux path, not `/mnt/c/...`**: WSL2's DrvFs (the Windows-drive mount) doesn't support the POSIX permission bits SR Linux needs to chmod its own config files during commit, which breaks postdeploy with an "Operation not permitted" error. The repo lives in git on the Windows drive (so other tooling can reach it), but gets synced to `~/netmind-lab/` before deploying — use `scripts/sync-to-lab.sh` rather than copying files by hand, since the topology now bind-mounts `telemetry/collectors/gnmic.yaml` and needs it alongside it on native fs:
 
 ```
 wsl -d Containerlab
-mkdir -p ~/netmind-lab/topologies
-cp /mnt/c/MyWorkSpace/AI-Projects/NetMind-AI/lab/topologies/netmind-2node.clab.yml ~/netmind-lab/topologies/
-cd ~/netmind-lab/topologies
+bash /mnt/c/MyWorkSpace/AI-Projects/NetMind-AI/scripts/sync-to-lab.sh
+cd ~/netmind-lab/lab/topologies
 sudo clab deploy -t netmind-2node.clab.yml
 ```
 

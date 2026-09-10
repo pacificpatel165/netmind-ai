@@ -1,0 +1,43 @@
+# gnmic subscription config — component #2, stage 1.
+#
+# Subscribes to interface operational state + statistics on both lab
+# nodes and writes the stream to a file for validation. No Prometheus
+# output yet — component #3 (metrics store) adds that once it exists;
+# this stage's only job is proving the subscribe pipeline is reliable.
+#
+# Verify against the installed gnmic version on first run — path names
+# and output-plugin field names can shift slightly between gnmic
+# releases (this was written against gnmic installed 2026-09-10).
+
+targets:
+  srl1:
+    address: clab-netmind-2node-srl1:57400
+    username: admin
+    password: NokiaSrl1!
+    skip-verify: true
+  srl2:
+    address: clab-netmind-2node-srl2:57400
+    username: admin
+    password: NokiaSrl1!
+    skip-verify: true
+
+subscriptions:
+  interface-state:
+    paths:
+      - /interface[name=*]/oper-state
+      - /interface[name=*]/admin-state
+      - /interface[name=*]/statistics
+    stream-mode: sample
+    sample-interval: 10s
+    encoding: json_ietf
+
+outputs:
+  telemetry-file:
+    type: file
+    filename: /var/log/gnmic/netmind-telemetry.jsonl
+    format: event
+
+# Next stage (component #3): add a `prometheus` output here once
+# Prometheus exists, so this same subscription set feeds both the
+# validation file and the metrics store without redesigning the
+# collector.

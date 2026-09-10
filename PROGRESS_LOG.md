@@ -35,6 +35,30 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-10 (6) — Component #2: first successful deploy, fixed the file-output bug
+**Focus:** Get the `gnmic` collector actually deployed and streaming, debug why it wasn't.
+**Hit and fixed:**
+- `scripts/sync-to-lab.sh` assumed `rsync` was present; the `Containerlab` distro doesn't ship it, which made the script abort, which in turn left `~/netmind-lab/lab/topologies` missing and caused a confusing downstream error ("Failed to fetch http(s) resource: https://netmind-2node.clab.yml" — containerlab's fallback when it can't resolve a relative topology path locally). Fixed: script now falls back to `cp` when `rsync` isn't installed.
+- With that fixed, `gnmic` deployed cleanly (`clab deploy` incrementally added just the new node — didn't disturb `srl1`/`srl2`), process confirmed running with correct args, config file confirmed correctly bind-mounted. But no output file ever appeared. Root cause, found via `gnmic ... --debug`: `err="open /var/log/gnmic/netmind-telemetry.jsonl: no such file or directory"` — gnmic's file output doesn't create a missing parent directory, and `/var/log/gnmic/` doesn't exist in the image. At default log level this fails completely silently (`docker logs` showed nothing at all), which is worth remembering for the next collector-type component.
+- Fix: bind-mount `telemetry/output/` (new folder, gitignored contents, `.gitkeep` tracked) onto `/var/log/gnmic` in the topology — Docker creates the mount point automatically, and it has the side benefit of making the output readable directly from the WSL shell (`tail ~/netmind-lab/telemetry/output/netmind-telemetry.jsonl`) without `docker exec`.
+**Also resolved this session:** the `Containerlab` distro's baked-in SSH key (`id_ecdsa`, shared across everyone who downloads the distro image) was being used for GitHub push instead of a personal key, causing "no push permission" errors — fixed by generating a distro-local `id_ed25519` key and registering it on the `pacificpatel165` GitHub account.
+**Next:** Redeploy with the fixed bind mount and confirm `output/netmind-telemetry.jsonl` actually fills with interface state/counter events every ~10s — that's the real exit criterion for component #2 stage 1 (still not yet met as of this entry).
+**Open questions:** none blocking.
+
+### 2026-09-10 (5) — Component #2 kickoff: telemetry collector design
+**Focus:** Design and build the first version of the telemetry collector.
+**Decided:**
+- Collector engine: **`gnmic`**, config-driven — subscription YAML, not a hand-written gNMI client. Keeps the work at the architecture/design level (which paths, which targets, sampling) rather than re-implementing gRPC/protobuf handling, matching the "architecture over coding depth" positioning.
+- Deployment: **containerized**, added as its own node (`gnmic`) in `lab/topologies/netmind-2node.clab.yml`, on the shared `netmind-mgmt` network — stood up/torn down with the rest of the lab, and the pattern the metrics store, dashboards, and eventually Kubernetes will all reuse.
+**Built:**
+- `telemetry/collectors/gnmic.yaml` — subscribes to interface oper/admin-state and statistics on both `srl1` and `srl2`, sampled every 10s, written to a file output for stage-1 validation. Prometheus output deliberately deferred to component #3.
+- `telemetry/README.md` — the decisions above plus how to verify the stream.
+- `lab/topologies/netmind-2node.clab.yml` — added the `gnmic` node (kind `linux`, `ghcr.io/openconfig/gnmic:latest`, bind-mounts the subscription config, mgmt IP `172.100.100.20`).
+- `scripts/sync-to-lab.sh` — replaces manual single-file copying with a full repo sync (`rsync`, excludes `.git`) to `~/netmind-lab/` before every deploy, since the topology now bind-mounts a second file that has to move with it. Referenced from `lab/README.md` and `docs/setup/01-network-lab-environment.md` (both updated).
+**Not yet verified:** the gnmic container image tag and exact `cmd`/bind-mount syntax haven't been deploy-tested yet (written without shell access this session) — first deploy may need a small correction. Also resolved separately this session: the `Containerlab` distro's baked-in SSH key (`id_ecdsa`, shared across everyone who downloads the distro image) was being used for GitHub push instead of a personal key, causing "no push permission" errors — fixed by generating a distro-local `id_ed25519` key and registering it on the `pacificpatel165` GitHub account.
+**Next:** Run `sync-to-lab.sh`, redeploy, and verify telemetry is actually flowing (`docker logs -f clab-netmind-2node-gnmic` or tail the output file) — that's the exit criterion for component #2 stage 1.
+**Open questions:** none blocking.
+
 ### 2026-09-10 (4) — Setup documentation + Kubernetes timing
 **Focus:** Document the full containerlab environment install/config as a reproducible step-by-step guide, and decide when Kubernetes enters the picture.
 **Built:** `docs/setup/01-network-lab-environment.md` — everything from the Docker Desktop/Ubuntu conflict through distro install, Docker CE + containerlab setup, the DrvFs deploy gotcha and fix, `gnmic` install, and lab verification. Numbered to match the component map so later components get their own `0N-<component>.md` in the same folder.
