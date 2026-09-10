@@ -21,6 +21,7 @@ flowchart TB
     classDef device fill:#E6F6F5,stroke:#0E7C7B,color:#0B4443
     classDef collector fill:#FDEEDC,stroke:#C2660A,color:#7A3E06
     classDef metrics fill:#FBE7E4,stroke:#B42318,color:#7A241A
+    classDef dashboard fill:#DBEAFE,stroke:#1D4ED8,color:#1E3A8A
     classDef planned fill:#EDEFF3,stroke:#94A0AD,color:#5B6472,stroke-dasharray: 4 3
 
     REPO["C:\MyWorkSpace\...\NetMind-AI<br/>git repo (source of truth)"]:::host
@@ -34,10 +35,10 @@ flowchart TB
                 SRL2["srl2 — Nokia SR Linux<br/>.12 : 57400"]:::device
                 GNMIC["gnmic collector<br/>.20 · :9804 /metrics"]:::collector
                 PROM["Prometheus<br/>.30 · :9090 UI"]:::metrics
+                GRAFANA["Grafana<br/>.40 · :3000 UI"]:::dashboard
             end
             OUT["telemetry/output/netmind-telemetry.jsonl"]:::distro
         end
-        GRAFANA["Grafana — component #4 (planned)"]:::planned
     end
 
     REPO -->|sync-to-lab.sh cp| NATIVE
@@ -48,15 +49,17 @@ flowchart TB
     SRL2 -.->|"② stream every 10s"| GNMIC
     GNMIC -->|writes JSON| OUT
     PROM -->|"GET /metrics every 10s"| GNMIC
-    PROM -.->|next: dashboards| GRAFANA
+    GRAFANA -->|"queries (datasource)"| PROM
 ```
 
 **Status note:** Prometheus and its scrape of gnmic are confirmed
 working as of 2026-09-10 — component #3 stage 1 is closed out, see
-`PROGRESS_LOG.md` entry (11). Direct scrape (no Kafka buffer) and
-default 15-day retention were both deliberate choices, not
-oversights — see `docs/roadmap/BACKLOG.md` items 1–2 for why and when
-to revisit.
+`PROGRESS_LOG.md` entry (11). Grafana (component #4) is built and
+provisioned as code (datasource + dashboard JSON auto-loaded, no
+manual UI setup) but not yet deploy-verified in this diagram's source
+session — see entry (12). Direct scrape (no Kafka buffer) and default
+15-day retention were both deliberate choices, not oversights — see
+`docs/roadmap/BACKLOG.md` items 1–2 for why and when to revisit.
 
 ## How the subscription actually works
 
@@ -85,6 +88,12 @@ direction: **Prometheus is the client here** — it initiates a `GET
 which is why the arrow points from Prometheus to gnmic rather than the
 other way around.
 
+**Grafana's relationship to Prometheus follows the same pull shape** —
+Grafana is the client, querying Prometheus's HTTP API whenever a
+dashboard panel needs data (on load, and every 10s while the dashboard
+auto-refreshes). Nothing is pushed into Grafana; it's provisioned with
+Prometheus as a datasource and pulls on demand.
+
 ## Component status
 
 Extend this table as components #4–11 come online. Anything listed as
@@ -100,5 +109,5 @@ its reasoning in `docs/roadmap/BACKLOG.md`.
 | netmind-mgmt | Containerlab distro (Docker bridge network) | connectivity between all containers | 172.100.100.0/24 | ✅ verified |
 | sync-to-lab.sh | Windows ↔ WSL2 boundary | copies the repo to native fs before every deploy | — | ✅ verified |
 | Prometheus | Containerlab distro (Docker container) | metrics store — scrapes gnmic directly, no persistence yet | 172.100.100.30 · :9090 | ✅ verified |
-| Grafana | not yet built | dashboards on top of Prometheus | — | ⏳ planned · #4 |
+| Grafana | Containerlab distro (Docker container) | dashboards on top of Prometheus, provisioned as code | 172.100.100.40 · :3000 | 🔧 built, not yet verified |
 | k3s + Cilium | not yet built (same Containerlab distro) | K8s underlay, attaches to reserved `e1-2` | — | ⏳ planned · phase 2 |

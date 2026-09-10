@@ -7,6 +7,11 @@ apiVersion: 1
 
 datasources:
   - name: NetMind Prometheus
+    # Fixed uid so dashboard JSON (grafana/dashboards/netmind-overview.json)
+    # can reference this datasource by a stable id instead of Grafana's
+    # auto-generated one, which isn't guaranteed to match across a fresh
+    # provision.
+    uid: netmind-prometheus
     type: prometheus
     access: proxy
     # Same docker network (netmind-mgmt) as gnmic/Prometheus — reachable

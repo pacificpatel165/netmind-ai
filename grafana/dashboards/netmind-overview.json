@@ -1,0 +1,222 @@
+{
+  "uid": "netmind-overview",
+  "title": "NetMind Overview",
+  "description": "Component #4 — first dashboard on top of the verified gnmic -> Prometheus pipeline (components #2/#3). Metric names below were read directly from Prometheus's metric browser on 2026-09-10, not guessed: subscription name 'interface-state' + metric-prefix 'netmind' produced netmind_interface_state_srl_nokia_interfaces_interface_<leaf>. Covers the full statistics leaf set gnmic exposed (admin/oper state, octets, packets, unicast/multicast/broadcast breakdown, errors, discards, FCS errors, link/carrier/interface transitions, mirrored traffic). Panels assume gnmic's standard labels for a YANG list key ('name' = interface name) and target ('source'); if a panel comes up empty, open Explore on the raw metric and check the actual label names before editing the query.",
+  "tags": ["netmind", "component-4"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Pipeline health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Prometheus scrape of gnmic",
+      "description": "Prometheus's own 'up' metric for the netmind-gnmic job — 1 means the last scrape of gnmic:9804 succeeded.",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "up{job=\"netmind-gnmic\"}", "legendFormat": "{{instance}}" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value_and_name" }
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Interface admin / oper state",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Admin state (raw series)",
+      "description": "One row per interface per state value currently reporting. strings-as-labels means the admin-state value itself becomes a label on this metric rather than the sample value — read the label columns, not the Value column.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "netmind_interface_state_srl_nokia_interfaces_interface_admin_state", "format": "table", "instant": true }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Oper state (raw series)",
+      "description": "Same pattern as admin state — one row per interface per oper-state value currently reporting.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "netmind_interface_state_srl_nokia_interfaces_interface_oper_state", "format": "table", "instant": true }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true }
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Traffic",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Octets/sec per interface",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_in_octets[$__rate_interval])", "legendFormat": "{{name}} in" },
+        { "refId": "B", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_out_octets[$__rate_interval])", "legendFormat": "{{name}} out" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Packets/sec per interface",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_in_packets[$__rate_interval])", "legendFormat": "{{name}} in" },
+        { "refId": "B", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_out_packets[$__rate_interval])", "legendFormat": "{{name}} out" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "pps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Errors & transitions",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Error / discarded packets per second",
+      "description": "Should sit at zero on a healthy lab link — a nonzero value here is worth investigating before trusting anything built on top of this telemetry.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_in_error_packets[$__rate_interval])", "legendFormat": "{{name}} in errors" },
+        { "refId": "B", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_out_error_packets[$__rate_interval])", "legendFormat": "{{name}} out errors" },
+        { "refId": "C", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_in_discarded_packets[$__rate_interval])", "legendFormat": "{{name}} in discards" },
+        { "refId": "D", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_out_discarded_packets[$__rate_interval])", "legendFormat": "{{name}} out discards" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "pps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Link / carrier transitions",
+      "description": "Counts of state flaps — should stay flat on a lab link nobody is touching. A rising count without a known cause (a manual clab redeploy, an intentional test) is the kind of thing component #5 (anomaly detection) will eventually flag on its own.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "netmind_interface_state_srl_nokia_interfaces_interface_statistics_link_transitions", "legendFormat": "{{name}} link transitions" },
+        { "refId": "B", "expr": "netmind_interface_state_srl_nokia_interfaces_interface_statistics_carrier_transitions", "legendFormat": "{{name}} carrier transitions" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Packet types",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Inbound packets by type per second",
+      "description": "Unicast/multicast/broadcast breakdown of statistics_in_packets — useful for spotting an unexpected flood of broadcast/multicast traffic that a plain packets/sec total would hide.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_in_unicast_packets[$__rate_interval])", "legendFormat": "{{name}} unicast" },
+        { "refId": "B", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_in_multicast_packets[$__rate_interval])", "legendFormat": "{{name}} multicast" },
+        { "refId": "C", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_in_broadcast_packets[$__rate_interval])", "legendFormat": "{{name}} broadcast" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "pps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Outbound packets by type per second",
+      "description": "Same breakdown for statistics_out_packets.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_out_unicast_packets[$__rate_interval])", "legendFormat": "{{name}} unicast" },
+        { "refId": "B", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_out_multicast_packets[$__rate_interval])", "legendFormat": "{{name}} multicast" },
+        { "refId": "C", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_out_broadcast_packets[$__rate_interval])", "legendFormat": "{{name}} broadcast" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "pps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 15,
+      "type": "row",
+      "title": "Additional counters",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "FCS errors & interface transitions",
+      "description": "statistics_in_fcs_error_packets (physical-layer frame-check-sequence errors, distinct from the general error counter) and statistics_interface_transitions (the interface's own admin/oper state-change count, separate from the physical link/carrier transitions in the panel above).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_in_fcs_error_packets[$__rate_interval])", "legendFormat": "{{name}} FCS errors" },
+        { "refId": "B", "expr": "netmind_interface_state_srl_nokia_interfaces_interface_statistics_interface_transitions", "legendFormat": "{{name}} interface transitions" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Mirrored traffic (out)",
+      "description": "statistics_out_mirror_octets / statistics_out_mirror_packets — only nonzero if port mirroring is configured on a node, which it isn't in this lab yet. Included for completeness against the full metric set; expect a flat zero line, not a blank panel, unless mirroring gets configured later.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "datasource": { "type": "prometheus", "uid": "netmind-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_out_mirror_octets[$__rate_interval])", "legendFormat": "{{name}} mirror octets/s" },
+        { "refId": "B", "expr": "rate(netmind_interface_state_srl_nokia_interfaces_interface_statistics_out_mirror_packets[$__rate_interval])", "legendFormat": "{{name}} mirror packets/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    }
+  ]
+}
