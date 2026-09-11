@@ -35,6 +35,18 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-11 (18) — Lab lifecycle fix: single-command up/down, survives a laptop restart
+**Focus:** After a laptop restart, `docker ps -a` showed the `linux`-kind containers (gnmic, Prometheus, Grafana, anomaly-detector, Chroma) back `Up`, but `srl1`/`srl2` stuck `Exited (143)` even after re-running `clab deploy` — and a single command to bring the whole lab up/down was requested rather than the multi-step sync+deploy dance every time.
+**Investigated:** confirmed against containerlab's own node-configuration docs (containerlab.dev/manual/nodes/) that the topology schema has no `restart-policy` field — there's nothing to add to `netmind-2node.clab.yml` itself to fix this, and `clab deploy` doesn't reliably restart a container that already exists but is stopped, for every kind.
+**Built:**
+- `scripts/lab-up.sh` — one command: syncs the repo, `docker start`s any container already `Exited`, runs `clab deploy` to reconcile anything genuinely missing, then sets Docker's own `--restart unless-stopped` policy (a container-level setting, independent of containerlab) on every container in the lab so dockerd itself brings them back up whenever it starts.
+- `scripts/lab-down.sh` — one command wrapping `clab destroy --cleanup`.
+- `lab/README.md` — new "Starting and stopping the lab" section documenting both scripts and the known gotcha above.
+**Not fully solved:** the Docker-level restart policy only helps once the Docker daemon (inside the `Containerlab` WSL2 distro) is actually running — nothing yet starts that distro automatically on a full Windows boot, so at least one `wsl -d Containerlab` + `lab-up.sh` is still needed after a laptop restart. Tracked as `docs/roadmap/BACKLOG.md` item 20.
+**Hit and fixed:** first real run of `lab-up.sh` failed restarting `srl1`/`srl2` with a Docker "not a directory" mount error. Root cause: `sync-to-lab.sh`'s `rsync --delete` was wiping `lab/topologies/clab-netmind-2node/` — containerlab's own generated per-deploy state, native-only, never in git — on every sync, moments before `docker start` tried to reuse a bind mount pointing at the file just deleted. This was likely also the true cause of the original "SR Linux won't come back" observation, since the old manual workflow ran the same sync-then-deploy sequence. Fixed by excluding that directory from the sync in `sync-to-lab.sh`.
+**Next:** re-run `lab-up.sh` with the fix and confirm `srl1`/`srl2` actually come back `Up`; then continue component #7 (diagnosis assistant) design.
+**Open questions:** none blocking.
+
 ### 2026-09-10 (17) — Component #6 stage 1: closed out
 **Focus:** Confirm the retrieval index actually retrieves — real docs, chunked and embedded into Chroma, returning relevant results for a real question.
 **Verified — stage 1 exit criterion met:** After redeploying with the version-pinned Chroma image (`chromadb/chroma:0.5.23`, see entry 16's "Hit and fixed"), `ingest.py` completed successfully: `Ingested 141 chunks from 12 documents into collection 'netmind-docs'.` A follow-up `query.py "why was Kafka skipped for the metrics store?"` returned three genuinely relevant top matches — `docs/roadmap/BACKLOG.md` item 1 (the Kafka-deferral decision itself) and `metrics/README.md` (the direct-scrape design decision), at distances 0.95–1.05. This is real retrieval against real content, not just "the container started" — component #6 stage 1 is done.

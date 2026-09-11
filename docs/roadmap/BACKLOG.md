@@ -44,6 +44,8 @@ fix it" is worth keeping.
 | 18 | Retrieval quality beyond one ad hoc query | #6 retrieval index | `query.py` proves retrieval *works*, not that it's *good* — no eval set, no relevance grading yet | A small set of question → expected-source pairs checked automatically, once component #7 (diagnosis assistant) actually depends on retrieval quality being good, not just present | 2026-09-10, log (16) |
 | 19 | ONNX embedding model re-downloaded every `docker run` | #6 retrieval index | Chroma's default embedding function caches the ~79MB MiniLM ONNX model under `/root/.cache/chroma/` inside the container, but `ingest.py`/`query.py` run via `docker run --rm` — the cache dies with the container, so every invocation re-downloads it (~40s, observed on first real run) | A named Docker volume or bind mount for `/root/.cache/chroma`, shared across `ingest.py`/`query.py` runs — worth it once retrieval is called often enough for the repeated download to actually matter | 2026-09-10, log (17) |
 
+| 20 | `Containerlab` WSL2 distro doesn't auto-start on Windows boot | tooling | `lab-up.sh`/`docker update --restart unless-stopped` only bring containers back once the Docker daemon inside the `Containerlab` distro is running — nothing currently starts that distro automatically when Windows boots, so a laptop restart still needs at least one manual `wsl -d Containerlab` + `lab-up.sh` | Windows Task Scheduler entry (or WSL2's own boot-launch config) that starts the `Containerlab` distro at logon, so `lab-up.sh` alone is enough after any restart — not investigated yet, low priority since the lab isn't meant to run unattended | 2026-09-11, log (18) |
+
 ## Resolved
 
 | # | Topic | Component | Resolved | Notes |
@@ -73,3 +75,4 @@ session log.
 | Anomaly detector container | same | `intelligence/anomaly-detection/README.md` | **build the image locally first** (`docker build -t netmind-anomaly-detector:latest .`) — unlike the others, there's no public image to pull |
 | Chroma container | same | `intelligence/retrieval-index/README.md` | stood up via `clab deploy`; genuinely no host-level install step — it only exists as a container |
 | Retrieval ingest/query tools | same, run on demand (not a topology node) | `intelligence/retrieval-index/README.md` | **build the image locally first** (`docker build -t netmind-retrieval-tools:latest .`), then `docker run` against the `netmind-mgmt` network |
+| `scripts/lab-up.sh` / `scripts/lab-down.sh` | `Containerlab` distro | `lab/README.md` §"Starting and stopping the lab" | single-command wrappers around sync + `clab deploy`/`destroy`, plus a fix for containers not restarting after a laptop reboot |

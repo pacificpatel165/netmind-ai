@@ -15,18 +15,17 @@ REPO_WIN="/mnt/c/MyWorkSpace/AI-Projects/NetMind-AI"
 REPO_NATIVE="$HOME/netmind-lab"
 
 mkdir -p "$REPO_NATIVE"
-
-if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete --exclude='.git' "$REPO_WIN/" "$REPO_NATIVE/"
-else
-  # rsync isn't in the base wsl-containerlab image. Fall back to cp so
-  # this script works with no extra install. Downside: files deleted
-  # from the repo won't be removed from the native copy automatically —
-  # `rm -rf ~/netmind-lab` occasionally if that drifts.
-  echo "rsync not found — falling back to cp (won't prune files removed from the repo)."
-  cp -r "$REPO_WIN"/. "$REPO_NATIVE"/
-  rm -rf "$REPO_NATIVE/.git"
-fi
+# --exclude on clab-netmind-2node/ matters as much as --delete itself:
+# that directory is containerlab's own generated per-deploy state
+# (each node's topology.yml/config), created natively and never
+# committed to git. Without this exclude, --delete wipes it on every
+# sync -- harmless right before a full `clab destroy && clab deploy`
+# (which regenerates it from scratch anyway), but it breaks a plain
+# `docker start` on an already-created, merely-stopped container: the
+# container's bind mount still points at the now-deleted file, and
+# Docker fails with a "not a directory" mount error. See lab-up.sh and
+# lab/README.md's "known gotcha" section.
+rsync -a --delete --exclude='.git' --exclude='lab/topologies/clab-netmind-2node/' "$REPO_WIN/" "$REPO_NATIVE/"
 
 echo "Synced $REPO_WIN -> $REPO_NATIVE"
 echo "Deploy from: $REPO_NATIVE/lab/topologies/"
