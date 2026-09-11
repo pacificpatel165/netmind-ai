@@ -142,7 +142,35 @@ Not bundled with containerlab — install separately, inside the
 bash -c "$(curl -sL https://get-gnmic.openconfig.net)"
 ```
 
-## 9. Deploy the lab and verify it's a live gNMI target
+## 9. Install rsync
+
+Not present in the base `wsl-containerlab` image. `scripts/sync-to-lab.sh`
+depends on it (see section 11) to mirror the repo — install once per
+distro:
+
+```bash
+sudo apt update
+sudo apt install -y rsync
+```
+
+## 10. Personal SSH key for git push
+
+The distro's baked-in key (`id_ecdsa` inside `~/.ssh/`) is identical
+across every download of the `wsl-containerlab` image — it's fine for
+its original purpose (`ssh clab@localhost`), but not for pushing to a
+personal GitHub account: using it as-is produces "no push permission"
+errors, since it isn't registered against your account. Generate and
+register a personal key instead, once per distro:
+
+```bash
+ssh-keygen -t ed25519 -C "<your GitHub email>"
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+cat ~/.ssh/id_ed25519.pub   # paste this into GitHub -> Settings -> SSH and GPG keys
+ssh -T git@github.com       # should greet you by username if it worked
+```
+
+## 11. Deploy the lab and verify it's a live gNMI target
 
 ```bash
 cd ~/netmind-lab/topologies
@@ -161,11 +189,29 @@ monitoring model) plus supported encodings (JSON_IETF, PROTO, ASCII).
 That response is the sign this environment is ready for component #2
 (the telemetry collector) to point at.
 
-## 10. Tear down
+For everyday use once the lab exists, prefer the single-command
+wrappers over the raw `clab deploy`/`destroy` shown above and in
+section 7 — see `lab/README.md`'s "Starting and stopping the lab"
+section:
+
+```bash
+bash /mnt/c/MyWorkSpace/AI-Projects/NetMind-AI/scripts/lab-up.sh
+bash /mnt/c/MyWorkSpace/AI-Projects/NetMind-AI/scripts/lab-down.sh
+```
+
+`lab-up.sh` also fixes a real gotcha the raw commands don't: after a
+laptop/WSL2 restart, a plain sync + `clab deploy` can leave the SR
+Linux nodes stuck `Exited` even though the other containers come back
+— see `lab/README.md` for the full diagnosis (a stale `rsync --delete`
+wiping containerlab's own generated per-deploy state).
+
+## 12. Tear down
 
 ```bash
 sudo clab destroy -t netmind-2node.clab.yml --cleanup
 ```
+
+(or `scripts/lab-down.sh`, shown above in section 11.)
 
 ---
 

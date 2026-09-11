@@ -35,6 +35,24 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-11 (20) — Documentation audit: install steps weren't all captured
+**Focus:** User asked whether the recent install commands (rsync, personal SSH key, zstd, Ollama) had actually made it into `docs/setup/01-network-lab-environment.md` or anywhere else — they hadn't. Went through every doc that's supposed to make this environment reproducible and closed the gaps.
+**Found missing:** `docs/setup/01-network-lab-environment.md` (the file whose own stated purpose is "so it can be rebuilt... without re-deriving the decisions from scratch") had no steps for installing `rsync`, generating/registering the personal SSH key, or anything from this session (zstd, Ollama). `docs/roadmap/BACKLOG.md`'s installation index pointed two rows at itself ("this file, row 9"/"row 21") instead of an actual how-to doc — a dead-end for anyone following the index. Item 7 (install rsync) was still listed as "open/deferred" despite `sync-to-lab.sh` having run plain `rsync` successfully for multiple sessions — genuinely resolved, just never marked as such. A stray blank line had also split item 20/21 out of the "Open/deferred" table into orphaned fragments below the Resolved table.
+**Fixed:**
+- `docs/setup/01-network-lab-environment.md` — added §9 (install rsync) and §10 (generate/register personal SSH key), renumbered the rest, and pointed §11 (deploy) at `lab-up.sh`/`lab-down.sh` as the everyday path with the raw `clab deploy`/`destroy` kept as the underlying mechanism.
+- `docs/setup/07-diagnosis-assistant.md` — new file (matches the "component gets its own 0N- doc" convention this folder already used) capturing zstd + Ollama install/verify steps, explicitly marked in-progress since the model/placement/provider decisions for component #7 aren't made yet.
+- `docs/roadmap/BACKLOG.md` — item 7 (rsync) moved to Resolved; items 20/21 rebuilt into the actual Open/deferred table instead of sitting as broken fragments; installation-index rows for the SSH key, rsync, zstd, and Ollama now point at the two setup docs above instead of back at BACKLOG.md itself.
+**Next:** continue component #7 design (model benchmark, provider abstraction, PromQL strategy) — this was a documentation-integrity pass, not new build work.
+**Open questions:** none blocking.
+
+### 2026-09-11 (19) — Ollama installed and confirmed working (component #7 prep)
+**Focus:** Get a local model runnable ahead of component #7's design decision (which model, local-only vs. also Groq/Gemini).
+**Hit and fixed:** Ollama's install script requires `zstd` for extraction, not present in the `Containerlab` distro's base image — fixed with `sudo apt install -y zstd`.
+**Verified:** `ollama pull llama3.2:3b` (2.0GB) and `ollama run llama3.2:3b "test prompt"` both succeeded, coherent response returned. Note for next time: the install script starts its own background `ollama serve` automatically — a separately, manually run `ollama serve &` will fail with "address already in use" against the same port, which is expected and not a real error; the already-running service is what actually serves requests.
+**Not yet done:** latency/RAM benchmarking against the other 7 lab containers running simultaneously, and no comparison against an 8B-class model yet — tracked as `docs/roadmap/BACKLOG.md` item 21. Ollama is currently host-installed inside the `Containerlab` distro, not containerized/added to the topology — that placement decision (own topology node vs. host-level) still open, see conversation.
+**Next:** benchmark 3B vs 8B on this machine, decide model + host-vs-container placement, then design the fixed-templates-vs-LLM-generated-PromQL question for the structured metrics side of component #7.
+**Open questions:** none blocking.
+
 ### 2026-09-11 (18) — Lab lifecycle fix: single-command up/down, survives a laptop restart
 **Focus:** After a laptop restart, `docker ps -a` showed the `linux`-kind containers (gnmic, Prometheus, Grafana, anomaly-detector, Chroma) back `Up`, but `srl1`/`srl2` stuck `Exited (143)` even after re-running `clab deploy` — and a single command to bring the whole lab up/down was requested rather than the multi-step sync+deploy dance every time.
 **Investigated:** confirmed against containerlab's own node-configuration docs (containerlab.dev/manual/nodes/) that the topology schema has no `restart-policy` field — there's nothing to add to `netmind-2node.clab.yml` itself to fix this, and `clab deploy` doesn't reliably restart a container that already exists but is stopped, for every kind.
