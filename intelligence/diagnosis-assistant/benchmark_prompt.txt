@@ -1,0 +1,20 @@
+You are NetMind's diagnosis assistant. Answer the question using only the
+context below, and cite which source each claim comes from.
+
+--- Retrieved doc chunk (docs/roadmap/BACKLOG.md, item 1) ---
+Kafka buffer between gnmic and Prometheus was deferred: direct scrape
+proves the pipeline with one less moving part; Kafka is real
+architecture but adds a third component before Prometheus itself was
+even confirmed working. Worth doing once a second consumer of the same
+telemetry stream exists (e.g. the retrieval index also wanting it),
+not before.
+
+--- Metrics summary (Prometheus, last 15m) ---
+interface=ethernet-1/1
+netmind_..._statistics_in_error_packets: rate 0.02/s (baseline 0.01/s, z=2.1)
+netmind_..._statistics_carrier_transitions: 3 transitions in last 15m (baseline 0, z=4.8)
+netmind_anomaly_detected{interface="ethernet-1/1",stat="carrier_transitions"}: 1
+
+--- Question ---
+ethernet-1/1 just flagged an anomaly on carrier transitions. What's
+likely going on, and is this related to the Kafka decision at all?
