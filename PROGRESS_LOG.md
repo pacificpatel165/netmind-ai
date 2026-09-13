@@ -35,6 +35,70 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-13 (27) — `interface_name` fix confirmed deployed and working
+
+**Focus:** Verify entry 26's fix actually took effect on the running lab, not just in committed code — user pushed back on accepting the fix as "done" until it was proven with real, unambiguous output rather than an assumption.
+
+**How it was verified:** rather than trust the full `assistant.py`/Ollama path (slow, and a wrong-sounding LLM answer would leave the actual data question unresolved), tested the router/template layer directly and in isolation:
+```python
+import router
+router.resolve_metrics('any anomaly score for ethernet-1/1?', lambda p: '')
+```
+This exercises the real, rebuilt `detector.py`'s live Prometheus data through the real `promql_templates.py`/`router.py`, without waiting on or depending on Ollama at all (the fallback `generate_fn` is never called for a templated question) — the cleanest possible isolation of exactly the thing being verified.
+
+**Result:** every returned series showed `interface="ethernet-1/1"` — not `interface="unknown"` — with small, sane z-scores (`in_octets = -0.267`, well under the 3.0 flag threshold, consistent with a quiet lab). `used_fallback: False` confirms it went through the fast template path. This is definitive: the bug described in entry 26 is fixed in the actually-running system, not just in source.
+
+**A separate, unrelated hiccup along the way:** a direct `curl` with a hand-quoted PromQL query (`...{interface_name="ethernet-1/1"}`) failed with a Prometheus parse error at the shell/terminal level (likely bracket/quote auto-pairing mangling the pasted command) — not a real bug, and not the same thing as the fix being broken; confirmed by the fact that the same query, run from Python via `requests` inside `router.py`, worked cleanly against the same Prometheus instance. Noted `--data-urlencode` as the shell-safe way to run this class of query by hand in the future, in case it comes up again.
+
+**Component #5's stage 1 closeout (log 15) is re-affirmed** now that the label fix is confirmed live — the "verified" status holds again, this time actually checked against real per-interface output rather than "something renders on Grafana."
+
+**Next:** component #7's actual exit criterion (item 24 in `docs/roadmap/BACKLOG.md`) is still open — a full run through `assistant.py`/`run.sh` with retrieval + metrics + citations all correct, including a question that exercises the LLM-generated PromQL fallback path (item 23) at least once, since that path hasn't been touched by any test yet.
+**Open questions:** none blocking.
+
+### 2026-09-13 (26) — Bug found and fixed: wrong Prometheus label key, retroactively affects component #5
+
+**Focus:** User feedback — the diagnosis assistant's first live run against real data returned "no data" for every metrics query, and simply patching that symptom wasn't enough; asked for a proper re-analysis rather than another quick fix.
+
+**What was wrong:** every raw gnmic-sourced interface metric was assumed to carry the label key `name` for the interface (stated as fact in component #4's dashboard description, then reused unchecked in component #5's `detector.py`, then copied again into component #7's new `promql_templates.py`). Direct inspection — `curl http://localhost:9090/api/v1/query?query=...in_error_packets` — showed the real label key is `interface_name`, and `name` never existed on these series at all.
+
+**Impact, worse than it first looked:** this wasn't just a component #7 bug. `detector.py`'s `series_by_interface()` and `evaluate_leaf()` were reading `.get("name", "unknown")`, which silently returned `"unknown"` for every single series since component #5 was built — meaning every `netmind_anomaly_*` Gauge this component has ever emitted has been labeled `interface="unknown"`, merging both nodes and every port into one indistinguishable bucket. This slipped through component #5's original "verified" closeout (entry 15) because data still rendered on the Grafana anomaly panel — the failure was in per-interface labeling, not in whether data flowed, so a visual check never caught it. Found now only because component #7 queries the same raw metrics directly and hit empty results immediately.
+
+**Fixed:**
+- `intelligence/anomaly-detection/detector.py` — both `.get("name", ...)` calls corrected to `.get("interface_name", ...)`, with a docstring explaining the bug, when/how it was found, and its scope.
+- `intelligence/diagnosis-assistant/promql_templates.py` — `error_rate`/`discard_rate`/`flap_history` corrected from `{name="..."}` to `{interface_name="..."}`. (`anomaly_score`/`anomaly_flagged` were already correct — those query the detector's own Gauges, which use `interface`, not the raw gnmic label — left unchanged.)
+- `intelligence/diagnosis-assistant/router.py` — the LLM-fallback prompt now explicitly tells the model to use `interface_name`, not `interface` or `name`, so the fallback path doesn't repeat the same mistake blind.
+- `grafana/dashboards/netmind-overview.json` — top-level `description` corrected; it had stated the wrong label key as a "read directly from Prometheus" fact. The `{{name}}` legend-format strings on raw-metric panels are left as-is: they only affect legend display text (would render blank, not wrong data) since no panel actually filters on `name` — cosmetic, tracked as a follow-up, not fixed here. The anomaly panel's `{{interface}} {{stat}}` legend format was already correct syntax; it will start showing real interface names once the `detector.py` fix is deployed, no JSON change needed there.
+
+**Not yet done:** none of these fixes have been rebuilt/redeployed yet — the anomaly-detector Docker image needs rebuilding (`docker build` inside `intelligence/anomaly-detection/`) and the lab needs a redeploy for `detector.py`'s fix to take effect; component #7 needs a live re-run to confirm `error_rate`/`flap_history`/`discard_rate` now return real data instead of "no data returned".
+
+**Lesson to carry forward:** an assumption stated once (component #4's dashboard description, 2026-09-10) got copied forward into two more components without being re-verified against the actual system, over three days. Worth checking a raw `curl`/Explore query against the source of truth once, the first time a label name is used in code, rather than trusting a prior doc's claim — cheap now, expensive after it's been copied three times.
+
+**Next:** rebuild the anomaly-detector image, redeploy the lab, and re-run `assistant.py` (via the new `run.sh`, see entry 25's "Next") against a real question to confirm the fix actually resolves the end-to-end symptom.
+**Open questions:** none blocking.
+
+### 2026-09-13 (25) — Correction: proper venv, not a system-Python shortcut
+**Focus:** User feedback, directly and rightly critical: the pip install steps I'd given for `intelligence/diagnosis-assistant/` were a shortcut, not professional practice, and I should slow down and do it properly rather than optimizing for finishing fast.
+**What was wrong:** `docs/setup/07-diagnosis-assistant.md` §6 told the user to `sudo apt install python3-pip` then `pip install -r requirements.txt` directly against the system interpreter. That hit Debian's PEP 668 "externally-managed-environment" protection (by design, not a bug) — and the reflex fix would have been `--break-system-packages`, which silences the protection instead of addressing why it exists: installing project dependencies into the system Python risks clashing with whatever apt itself depends on, with no isolation from anything else that runs Python in this distro later.
+**Fixed properly:** every Python component that runs host-level (currently just this one — the others are all containerized, where this problem doesn't arise) now gets its own virtual environment: `python3 -m venv .venv`, activate, then `pip install -r requirements.txt`, documented in both `docs/setup/07-diagnosis-assistant.md` §6 and `intelligence/diagnosis-assistant/README.md`. Added `intelligence/diagnosis-assistant/.gitignore` (`.venv/`) since a venv is local and disposable, never something to commit.
+**Hit and fixed — a second mistake caught before it shipped:** the first draft of this fix claimed the venv would "persist untouched" across `sync-to-lab.sh` runs without actually checking that. It wouldn't have — `sync-to-lab.sh`'s `rsync --delete` only preserves paths explicitly excluded, and `.venv/` only exists natively, never in the Windows-drive repo. Same exact bug class as the containerlab-generated-state issue that broke `srl1`/`srl2` restarts (entry 18/19's fix). Caught it before telling the user it worked, and added the same fix shape: `.venv/` excluded in `scripts/sync-to-lab.sh` alongside the existing `clab-netmind-2node/` exclude.
+**Lesson to carry forward:** any future host-level Python component in this project gets a venv from the start, documented alongside its own setup, not retrofitted after hitting the same error again.
+**Next:** re-run the pip install (now via venv) and the actual end-to-end test of `assistant.py` against the live lab — still the real exit criterion for component #7 stage 1.
+**Open questions:** none blocking.
+
+### 2026-09-13 (24) — Component #7: first build (retrieval + hybrid metrics + Ollama)
+**Focus:** Build the actual diagnosis assistant now that every design decision is made — the PromQL template set, the hybrid router, and the prompt assembly that ties retrieval + metrics + Ollama together.
+**Built:**
+- `intelligence/diagnosis-assistant/promql_templates.py` — the fixed template set: `error_rate`, `discard_rate`, `flap_history`, `anomaly_score`, `anomaly_flagged`, keyed by keyword (flap/transition/carrier → flap_history, anomaly/z-score → anomaly_score, error → error_rate, discard/drop → discard_rate).
+- `router.py` — `match_template()` extracts an interface name (`ethernet-\d+/\d+`) and keyword-matches to a template; `generate_and_validate()` is the LLM-fallback path — asks Ollama for one PromQL query restricted to the known metric names, then actually runs it against Prometheus to validate before trusting the result (a syntactically-invalid or hallucinated-metric query fails there, visibly, not silently).
+- `prometheus_client.py` / `retrieval_client.py` — thin clients factored out of the pattern component #5's `detector.py` and component #6's `query.py` already established, reused rather than reinvented.
+- `ollama_client.py` — single-shot `/api/generate` call with `keep_alive: 0` set directly in the request body — the confirmed-working fix from entry (22), not the CLI env var that didn't work.
+- `assistant.py` — the actual entry point: retrieval and metrics are independent lookups (true to "parallel" in the roadmap description), assembled into one prompt, sent to Llama 3.1 8B, answered with citations.
+- `intelligence/diagnosis-assistant/README.md` — design decisions + layout + known limits of this first build.
+**Design decision made in the course of building:** this whole component runs **host-level, not containerized** — reaches Chroma/Prometheus via their host-published ports (`localhost:8000`/`:9090`) and Ollama via `localhost:11434`, no container network involved. Same reasoning as Ollama's own placement (entry 23): avoids re-solving the persistent-storage problem for a third component, avoids Docker overhead on the memory-tight WSL2 VM.
+**Not yet done:** no end-to-end run against the live lab yet — all six files compile cleanly (checked locally) but haven't been executed against the real Ollama/Prometheus/Chroma stack. That run is the actual exit criterion, same pattern as every prior component. LLM-generated-PromQL validation is syntactic only (Prometheus accepts it, not "it's the right query") and there's no retry/repair loop on a rejected generated query — both real, named limits, not oversights.
+**Next:** run `assistant.py` against the live lab with a real question, confirm retrieval + metrics + citation all show up correctly in the answer — that closes out component #7 stage 1.
+**Open questions:** none blocking.
+
 ### 2026-09-13 (23) — Component #7: placement and provider scope decided
 **Focus:** Close out the two remaining open design decisions for component #7 from entry (22) — Ollama's placement, and whether to build a multi-provider abstraction now.
 **Decided:**

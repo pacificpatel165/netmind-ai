@@ -16,6 +16,20 @@ but a standalone service was chosen deliberately: it's the same shape
 this component will keep once the "real model" replaces the z-score
 math internally — a recording rule can't host a trained model, a
 service can, so this isn't throwaway scaffolding.
+
+Bug found and fixed 2026-09-13 (while building component #7, which
+queries these same raw metrics directly and hit it first): the actual
+label gnmic attaches to each interface series is `interface_name`, not
+`name`. `series_by_interface()`/`evaluate_leaf()` were reading the
+wrong key, which silently defaulted to "unknown" for every series --
+meaning every anomaly Gauge this component has ever emitted was
+labeled `interface="unknown"`, merging all interfaces (both nodes,
+every port) into one bucket rather than distinguishing them. This
+went unnoticed through this component's original "verified" closeout
+because something still rendered on the Grafana dashboard -- the bug
+was in per-interface labeling, not in whether data flowed at all, so
+a visual check didn't catch it. See PROGRESS_LOG.md for the full
+writeup of how this was found.
 """
 
 import logging
@@ -85,7 +99,7 @@ def query(promql: str):
 
 
 def series_by_interface(results) -> dict:
-    return {s["metric"].get("name", "unknown"): float(s["value"][1]) for s in results}
+    return {s["metric"].get("interface_name", "unknown"): float(s["value"][1]) for s in results}
 
 
 def evaluate_leaf(leaf: str) -> None:
@@ -98,7 +112,7 @@ def evaluate_leaf(leaf: str) -> None:
     stddev_by_iface = series_by_interface(stddev)
 
     for series in current:
-        iface = series["metric"].get("name", "unknown")
+        iface = series["metric"].get("interface_name", "unknown")
         value = float(series["value"][1])
         m = mean_by_iface.get(iface, 0.0)
         sd = stddev_by_iface.get(iface, 0.0)

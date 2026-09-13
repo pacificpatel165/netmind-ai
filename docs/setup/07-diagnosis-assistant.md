@@ -112,6 +112,63 @@ Both correctness and a real memory constraint were involved:
 
 **Decision: Llama 3.1 8B**, called with `keep_alive: 0` on every request.
 
+## 6. Install python3-venv, and run the assistant in its own virtual environment
+
+`python3-pip` and the venv module aren't in the base `wsl-containerlab`
+image either — same class of gap as `rsync`/`zstd`/`time`. Note: the
+generic `python3-venv` package name doesn't cover it on this distro —
+Debian ties the venv module to the specific interpreter version, so
+the real package name is `python3.11-venv` (or whatever `python3
+--version` reports on the machine you're setting this up on):
+
+```bash
+sudo apt update
+sudo apt install -y python3-pip python3.11-venv
+```
+
+If `python3 -m venv .venv` still fails with "ensurepip is not
+available" after this, the error message itself names the exact
+package it wants — install that one rather than guessing.
+
+**Correction (2026-09-13):** the first pass at this doc suggested a
+plain `pip install -r requirements.txt` against the system Python.
+That's the wrong way to do this — Debian's Python (PEP 668,
+"externally-managed-environment") refuses exactly this for good
+reason: installing packages into the system interpreter risks
+clashing with whatever apt itself depends on, and offers no
+isolation between this component's dependencies and anything else
+that might run Python in this distro later. `--break-system-packages`
+would silence the error but doesn't fix the actual problem — it's a
+workaround, not a decision. The correct, standard practice is a
+per-project virtual environment:
+
+```bash
+cd ~/netmind-lab/intelligence/diagnosis-assistant
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+`.venv/` is gitignored (`intelligence/diagnosis-assistant/.gitignore`)
+— it's a local, disposable environment, not something to commit.
+Every subsequent run needs the venv active:
+
+```bash
+cd ~/netmind-lab/intelligence/diagnosis-assistant
+source .venv/bin/activate
+python assistant.py "<question>"
+```
+
+(`deactivate` leaves the venv when done.) `.venv/` is explicitly
+excluded in `scripts/sync-to-lab.sh` (same fix shape as the
+containerlab-generated-state exclude from the lab-restart bug) — the
+first version of this doc claimed the venv would survive a resync
+untouched without checking that, which was wrong: without the
+exclude, `sync-to-lab.sh`'s `rsync --delete` would wipe it on every
+`lab-up.sh` run, since it only ever exists natively. With the exclude
+in place, it correctly survives resyncs and only needs recreating if
+you delete it yourself or move to a fresh machine.
+
 ## Not yet done
 
 All design decisions for component #7 are now made (model, placement,
