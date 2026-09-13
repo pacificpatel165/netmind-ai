@@ -5,12 +5,28 @@ kept separate from `docs/setup/01-network-lab-environment.md` per this
 folder's numbering convention — component-specific setup gets its own
 file rather than piling into the shared one.
 
-**Decided so far** (2026-09-11): model is **Llama 3.1 8B**, run via
-Ollama with `keep_alive: 0` on every API request (see §5 below) — not
-`llama3.2:3b`. **Still open:** local-only vs. also wiring in Groq/
-Gemini behind a shared provider interface; fixed-template vs. hybrid
-PromQL strategy is decided (hybrid, see `PROGRESS_LOG.md` entry 21) but
-not yet built.
+**Decided:**
+- Model: **Llama 3.1 8B**, run via Ollama with `keep_alive: 0` on
+  every API request (see §5 below) — not `llama3.2:3b`.
+- Placement: **host-installed, not containerized** (2026-09-13,
+  PROGRESS_LOG entry 23). Keeping it out of the topology means the
+  ~4.9GB model file (native to `~/.ollama`) survives every `clab
+  destroy`/`clab deploy` cycle for free, and avoids adding Docker
+  overhead on top of an already memory-tight WSL2 VM (§5). Revisit
+  only if a concrete reason shows up (e.g. GPU passthrough into WSL2
+  making a container-level integration worthwhile).
+- Provider scope: **local-only, no Groq/Gemini for now** (2026-09-13,
+  same entry). 8B already proved correct with proper citations — there
+  is no concrete gap yet that a second provider would close. Building
+  a provider abstraction speculatively would break this project's
+  established pattern of proving something's needed before building
+  it (same reasoning as the Kafka, retention, and re-ingestion
+  deferrals in `docs/roadmap/BACKLOG.md`). Revisit if a real question
+  later exposes a correctness or capability gap 8B can't cover.
+- Structured Prometheus query strategy: **hybrid** — fixed PromQL
+  templates first, LLM-generated PromQL fallback, validated before
+  ever running (`PROGRESS_LOG.md` entry 21). Not yet built — this is
+  the next real build step for the component.
 
 ---
 
@@ -97,29 +113,11 @@ Both correctness and a real memory constraint were involved:
 **Decision: Llama 3.1 8B**, called with `keep_alive: 0` on every request.
 
 ## Not yet done
-- **Placement decision:** Ollama is currently host-installed directly
-  inside the `Containerlab` distro, not added to the topology as its
-  own container the way every other component here has been. Whether
-  it moves into `lab/topologies/netmind-2node.clab.yml` (consistent
-  with the rest of the stack, survives `clab destroy` cycles the same
-  way) or stays host-level (simpler if a GPU gets passed through to
-  WSL2 later) is still open.
-- **Multi-provider design:** whether to also wire in Groq and/or
-  Gemini behind a shared provider interface (so the model can be
-  swapped by config rather than hardcoded) is a real design decision
-  under discussion, not yet built. Online providers would also be the
-  first time this project needs to handle an API key/secret, which is
-  its own small decision once it's actually built.
-- **Structured Prometheus query design: decided, not yet built.**
-  Hybrid — a small set of fixed, parameterized PromQL templates
-  (error rate, flap/transition history, anomaly score for a given
-  interface) tried first; only when a question doesn't match a known
-  template does it fall back to asking the model to generate PromQL
-  directly (validated before it's ever run against Prometheus — no
-  unvalidated model-generated query executes). Chosen over templates-
-  only because it keeps the safe, testable path as the default while
-  still answering questions the fixed set doesn't anticipate; chosen
-  over LLM-generated-only because it doesn't make every query depend
-  on the model getting metric names and syntax right. Real build (the
-  template set, the router, the generate-and-validate fallback path)
-  not started yet.
+
+All design decisions for component #7 are now made (model, placement,
+provider scope, PromQL strategy). What's left is the actual build:
+the fixed PromQL template set, the router that picks a template or
+falls back to LLM-generated PromQL, the generate-and-validate fallback
+path itself, and the prompt assembly that combines retrieval (Chroma)
++ structured metrics (Prometheus) + the question into what gets sent
+to Ollama.

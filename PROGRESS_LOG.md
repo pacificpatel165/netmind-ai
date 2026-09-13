@@ -35,6 +35,15 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-13 (23) — Component #7: placement and provider scope decided
+**Focus:** Close out the two remaining open design decisions for component #7 from entry (22) — Ollama's placement, and whether to build a multi-provider abstraction now.
+**Decided:**
+- **Ollama stays host-installed, not containerized.** Its ~4.9GB model file already lives on `~/.ollama` (native filesystem) and survives every `clab destroy`/`clab deploy` cycle for free; containerizing it without solving persistent storage first would mean re-downloading that model on every teardown — the same unsolved permission problem already deferred twice (Prometheus, item 3; Chroma, item 16). Also avoids adding Docker overhead on top of the WSL2 VM's proven-tight memory budget (entry 22).
+- **Provider scope stays local-only — no Groq/Gemini abstraction built now.** 8B already proved itself correct with proper citations; there's no concrete gap for a second provider to close. Building one speculatively would break this project's established pattern (Kafka, retention, auto re-ingestion all deferred the same way — prove the need first).
+**Updated:** `docs/setup/07-diagnosis-assistant.md` (all four component #7 design decisions now recorded together — model, placement, provider scope, PromQL strategy), `docs/roadmap/BACKLOG.md` (item 22 resolved).
+**Next:** all design decisions for component #7 are made. Start the actual build: the fixed PromQL template set, the router (template match vs. LLM-generated-PromQL fallback), the fallback's validation step, and the prompt assembly that combines Chroma retrieval + Prometheus metrics + the question for Ollama.
+**Open questions:** none blocking.
+
 ### 2026-09-11 (22) — Component #7 model decision: Llama 3.1 8B
 **Focus:** Settle the 3B-vs-8B model question from entry (21) with real measurements, not a guess.
 **Verified — correctness:** `benchmark.sh` run with the lab up. 3B answered fast (29.3s) but got a fact wrong — it said the anomaly "may be related to the recent decision to add a Kafka buffer," when the actual decision (BACKLOG.md item 1) was to skip Kafka. 8B answered slower (67.2s) but correctly, twice, with proper inline source citations ("Source: docs/roadmap/BACKLOG.md, item 1") — exactly the "answered with citations" behavior component #7 needs.
