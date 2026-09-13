@@ -35,6 +35,44 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-13 (29) — Component #7 stage 1: closed out
+
+**Focus:** the actual exit criterion (`BACKLOG.md` item 24) — one real question through `assistant.py` with retrieval, metrics, and citations all showing up correctly together.
+
+**Blocking issue found and fixed first:** Chroma's doc count was `0` — confirmed by direct query, and exactly as suspected in entry 28: `lab-down.sh`/`lab-up.sh` (run to redeploy the fixed anomaly-detector image) also destroyed and recreated the Chroma container, and it has no persistent storage (`BACKLOG.md` item 16, deferred since 2026-09-10). Rebuilt `netmind-retrieval-tools:latest` and re-ran `ingest.py` (211 chunks from 13 documents this time — doc count grew since component #6's original ingest, expected). Re-verified with `query.py` before trusting it: real, relevant matches for "why was Kafka skipped," `docs/roadmap/BACKLOG.md` item 1 and `metrics/README.md` both in the top 3.
+
+**The actual exit test:**
+```
+bash run.sh "what's the current traffic rate on ethernet-1/1, and why don't we use Kafka to buffer this telemetry?"
+```
+Answer came back with both halves grounded and cited correctly: the real traffic number (`27.5`, combined in+out octet rate, via the new `octet_rate` template from entry 28) cited with its exact PromQL, and the Kafka-deferral reasoning cited to `PROGRESS_LOG.md` chunk 71 with an accurate paraphrase of the real decision (not hallucinated) — a genuinely correct, dual-grounded, cited answer. This is the first time retrieval and metrics have both worked *and* been exercised together in the same real answer.
+
+**Component #7 stage 1 is done.** Updated `docs/architecture/component-diagram.md`: added Ollama and `diagnosis-assistant` to the diagram and component-status table (both host-installed, dashed lines, not topology nodes), and the status note now covers components #1-7. The rendered artifact still needs republishing to match (not done this session — do that before treating the diagram as fully in sync).
+
+**What this session actually proved, end to end, worth restating:** a real per-interface labeling bug in a previously-"verified" component (#5) got found, root-caused, fixed, deployed, and re-verified with concrete evidence rather than assumption; a genuinely fragile LLM-fallback failure got debugged with real visibility (not guessed at) and fixed by promoting a common question to a proper template rather than patching the symptom; and the Chroma-persistence gap that had been purely theoretical since day one turned into a real, felt problem, exactly on schedule for a "prove the need first" project.
+
+**Not yet done:** the rendered component-diagram artifact (republish); `BACKLOG.md` item 16 (Chroma persistence) is worth revisiting now that it's cost real time twice — not decided yet, worth a real discussion rather than reflexively building it; the LLM-fallback path (item 23) still has no repair loop, now correctly scoped to "the next genuinely off-template question that comes up" rather than the traffic-rate case (which got its own template instead); remediation proposal (component #8) hasn't been started.
+
+**Next:** decide whether to revisit Chroma/Prometheus persistent storage now (items 3 and 16) before starting component #8, or move to component #8 design as-is and let persistence stay deferred a while longer — open question for the next session.
+**Open questions:** persistent storage timing (see above) — not blocking, but worth a real decision rather than continuing to defer by default.
+
+### 2026-09-13 (28) — LLM-fallback path exercised for real, added error visibility, promoted traffic-rate to a template
+
+**Focus:** the first off-template question ("what's the current inbound traffic rate on ethernet-1/1?") returned a bare "I don't have any relevant metrics or docs" from `assistant.py`, with no way to tell why. User pushed back on accepting that as fine without seeing the actual cause.
+
+**Gap found and fixed first:** `router.py`'s `generate_and_validate()` discarded the LLM's generated PromQL text on failure, returning only Prometheus's error — which gives a character offset with nothing to point it at. Fixed to include `candidate query was: {candidate!r}` in the returned error string, so a rejected query is actually debuggable instead of a dead end.
+
+**What the fallback actually generated:** `netmind_interface_state_srl_nokia_interfaces_interface_statistics_in_octets[1m] by {interface_name="ethernet-1/1"}` — invalid PromQL. Two things worth separating: the label key is correct (`interface_name`, exactly what the fallback prompt was told to use after entry 26's fix — that correction holds even under LLM-generated queries, not just the fixed templates), but the model bolted on `by {...}` after a bare range-vector selector, which isn't legal syntax anywhere in PromQL (`by` only follows an aggregation function like `sum(...) by (...)`, with parentheses, not braces, not standalone).
+
+**This is not a new bug — it's `BACKLOG.md` item 23 happening for real,** and the outcome was actually the *good* one: `generate_and_validate()` caught the invalid query and reported failure rather than silently returning bad data. The hybrid design's validate-before-trust step did exactly its job.
+
+**Fixed anyway, because the underlying question is too common to leave fragile:** added `octet_rate()` to `promql_templates.py` (combined in+out byte rate, same shape as the existing error/discard/flap templates) and four new keywords (`traffic`, `octet`, `throughput`, `bandwidth`) to `KEYWORD_TEMPLATES`. "What's the traffic rate" is one of the most basic diagnostic questions there is — it shouldn't depend on an 8B model getting PromQL aggregation syntax right. The LLM-fallback path itself is left exactly as-is (still stage-1, still no repair loop) — item 23 stays open for the next *actually* off-template question that comes up, rather than fixed here.
+
+**Not yet done:** the new `octet_rate` template hasn't been re-run against the live lab yet to confirm it now returns real data for the same question; the Chroma retrieval-index count also hasn't been confirmed yet (suspected empty after the `lab-down.sh`/`lab-up.sh` redeploy in entry 27, since `BACKLOG.md` item 16 — no persistent Chroma storage — means a full redeploy wipes it; needs `ingest.py` re-run if so).
+
+**Next:** re-run the traffic-rate question through the real router with the new template in place; confirm Chroma's doc count and re-ingest if it's 0; then attempt the full stage-1 exit criterion (item 24) — one real question exercising retrieval, metrics, and citations together.
+**Open questions:** none blocking.
+
 ### 2026-09-13 (27) — `interface_name` fix confirmed deployed and working
 
 **Focus:** Verify entry 26's fix actually took effect on the running lab, not just in committed code — user pushed back on accepting the fix as "done" until it was proven with real, unambiguous output rather than an assumption.

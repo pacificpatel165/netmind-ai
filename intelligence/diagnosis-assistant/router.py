@@ -69,7 +69,12 @@ def generate_and_validate(question: str, generate_fn) -> tuple[str | None, str |
     try:
         query(candidate)
     except PrometheusQueryError as exc:
-        return None, f"generated query rejected by Prometheus: {exc}"
+        # Surface the actual generated text, not just Prometheus's error --
+        # without it there's no way to tell a real model mistake apart from
+        # our own stripping/formatting being wrong (found missing 2026-09-13
+        # while debugging the first real off-template question; the error
+        # message alone gave a character offset with nothing to point it at).
+        return None, f"generated query rejected by Prometheus: {exc} | candidate query was: {candidate!r}"
     return candidate, None
 
 

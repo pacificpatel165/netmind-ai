@@ -42,6 +42,8 @@ flowchart TB
             end
             OUT["telemetry/output/netmind-telemetry.jsonl"]:::distro
             INGEST["ingest.py / query.py<br/>docker run, on demand<br/>(not a topology node)"]:::muted
+            OLLAMA["Ollama daemon<br/>:11434 · llama3.1:8b<br/>host-installed, not containerized"]:::muted
+            DIAG["diagnosis-assistant<br/>assistant.py / run.sh<br/>venv, on demand<br/>(not a topology node)"]:::intelligence
         end
     end
 
@@ -57,16 +59,32 @@ flowchart TB
     ANOMALY -->|"PromQL: rate + rolling avg/stddev"| PROM
     PROM -->|"GET /metrics every 10s"| ANOMALY
     INGEST -.->|"embed + upsert / query"| CHROMA
+    DIAG -.->|"HTTP :8000 retrieve"| CHROMA
+    DIAG -.->|"HTTP :9090 hybrid PromQL"| PROM
+    DIAG -.->|"HTTP :11434 /api/generate"| OLLAMA
 ```
 
-**Status note:** Components #1–6 are all confirmed working as of
-2026-09-10. Component #6 (retrieval index) is verified end to end:
+**Status note:** Components #1–7 are all confirmed working as of
+2026-09-13. Component #6 (retrieval index) is verified end to end:
 `ingest.py` chunked and embedded this project's own docs into Chroma
 (141 chunks from 12 documents), and `query.py` returned genuinely
 relevant results for a real question — see `PROGRESS_LOG.md` entry
 (17). Direct scrape (no Kafka buffer) and default 15-day retention
 were both deliberate choices, not oversights — see
 `docs/roadmap/BACKLOG.md` items 1–2 for why and when to revisit.
+
+Component #7 (diagnosis assistant) is verified end to end as of
+2026-09-13: `assistant.py`, called with a question that needs both a
+live metric and a retrieved doc, returned a correctly cited answer
+combining a real Prometheus number (via the hybrid template/LLM
+PromQL router) and a real doc citation (via Chroma retrieval) — see
+`PROGRESS_LOG.md` entries 26–28. Getting there also surfaced and fixed
+a real bug: component #5's anomaly detector had been reading the wrong
+Prometheus label key since it was built, mislabeling every interface
+as `"unknown"` — fixed in both components, confirmed live. Ollama and
+`diagnosis-assistant` both run host-installed rather than as topology
+nodes (dashed lines above) — see `docs/setup/07-diagnosis-assistant.md`
+for why.
 
 ## How the subscription actually works
 
@@ -141,4 +159,6 @@ its reasoning in `docs/roadmap/BACKLOG.md`.
 | anomaly-detector | Containerlab distro (Docker container, built locally) | rolling z-score anomaly detection on interface counters, no ML/LLM yet | 172.100.100.50 · :9805 | ✅ verified |
 | Chroma | Containerlab distro (Docker container) | vector store for this project's own docs, no persistence yet | 172.100.100.60 · :8000 | ✅ verified |
 | ingest.py / query.py | Containerlab distro (docker run, on demand — built locally) | chunk+embed docs into Chroma / prove retrieval works | — | ✅ verified |
+| Ollama | Containerlab distro (host-installed, not containerized) | local LLM daemon — serves Llama 3.1 8B, `keep_alive:0` per request | localhost:11434 | ✅ verified |
+| diagnosis-assistant | Containerlab distro (host-level venv, on demand — built locally) | hybrid PromQL + retrieval-grounded LLM answers, cited | — | ✅ verified |
 | k3s + Cilium | not yet built (same Containerlab distro) | K8s underlay, attaches to reserved `e1-2` | — | ⏳ planned · phase 2 |

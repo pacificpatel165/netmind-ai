@@ -44,6 +44,20 @@ def flap_history(interface: str, window: str = "15m") -> str:
     )
 
 
+def octet_rate(interface: str, window: str = "15m") -> str:
+    """Combined in+out byte rate for one interface -- the basic "how much
+    traffic" question. Added 2026-09-13 after the LLM-generated-PromQL
+    fallback failed on exactly this question (invalid syntax: it tried
+    `by {...}` on a bare range vector, which isn't legal PromQL anywhere
+    -- `by` only follows an aggregation function, with parentheses, not
+    braces). Traffic volume is common enough to deserve a template
+    rather than depend on the model getting aggregation syntax right."""
+    return (
+        f'sum(rate({METRIC_PREFIX}in_octets{{interface_name="{interface}"}}[{window}])) '
+        f'+ sum(rate({METRIC_PREFIX}out_octets{{interface_name="{interface}"}}[{window}]))'
+    )
+
+
 def anomaly_score(interface: str, stat: str | None = None) -> str:
     """Current z-score(s) from component #5's anomaly detector for this
     interface, optionally narrowed to one stat (e.g. "carrier_transitions")."""
@@ -70,4 +84,8 @@ KEYWORD_TEMPLATES = {
     "error": error_rate,
     "discard": discard_rate,
     "drop": discard_rate,
+    "traffic": octet_rate,
+    "octet": octet_rate,
+    "throughput": octet_rate,
+    "bandwidth": octet_rate,
 }
