@@ -25,13 +25,14 @@ mkdir -p "$REPO_NATIVE"
 # container's bind mount still points at the now-deleted file, and
 # Docker fails with a "not a directory" mount error. See lab-up.sh and
 # lab/README.md's "known gotcha" section.
-# --exclude on intelligence/diagnosis-assistant/.venv/ is the same
-# class of fix as clab-netmind-2node/ above: a Python virtual
-# environment created natively (see docs/setup/07-diagnosis-assistant.md
-# §6) exists only on native fs, never in the Windows-drive repo -- without
-# this exclude, every sync would delete it and force a full `pip install`
-# on the next run.
-rsync -a --delete --exclude='.git' --exclude='lab/topologies/clab-netmind-2node/' --exclude='intelligence/diagnosis-assistant/.venv/' "$REPO_WIN/" "$REPO_NATIVE/"
+# --exclude on intelligence/diagnosis-assistant/.venv/ and
+# intelligence/remediation-proposal/.venv/ is the same class of fix as
+# clab-netmind-2node/ above: a Python virtual environment created
+# natively (see docs/setup/07-diagnosis-assistant.md §6) exists only on
+# native fs, never in the Windows-drive repo -- without this exclude,
+# every sync would delete it and force a full `pip install` on the
+# next run.
+rsync -a --delete --exclude='.git' --exclude='lab/topologies/clab-netmind-2node/' --exclude='intelligence/diagnosis-assistant/.venv/' --exclude='intelligence/remediation-proposal/.venv/' "$REPO_WIN/" "$REPO_NATIVE/"
 
 echo "Synced $REPO_WIN -> $REPO_NATIVE"
 echo "Deploy from: $REPO_NATIVE/lab/topologies/"

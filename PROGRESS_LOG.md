@@ -35,6 +35,50 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-14 (31) — Component #8 stage 1 core: built and verified end-to-end for real
+
+**Focus:** build the standalone JSON-RPC half of component #8 (deferring NETCONF pending its YANG namespace, entry 30) and actually prove the whole loop against the live lab — not just that the code runs, but that a generated proposal, when applied, genuinely fixes the problem it was built from.
+
+**Built:** `intelligence/remediation-proposal/` — `state_client.py` (JSON-RPC `get`, confirmed schema from entry 30), `remediation_templates.py` (`interface_admin_up`, deterministic only — see the module's own docstring for why an LLM never authors this component's structured payload, unlike component #7's hybrid PromQL strategy), `propose.py` (CLI: read real state, propose only if actually broken). `scripts/sync-to-lab.sh` got a third `.venv` exclude for this component's own environment, same fix shape as component #7's.
+
+**The full test, for real:**
+1. `propose.py` against both `srl1`/`srl2`'s `ethernet-1/1` while healthy — correctly reported nothing to propose.
+2. Created a real fault by hand in `sr_cli` — the first attempt to set `admin-state disable` failed with a parsing error because the CLI was in `running` (read-only) mode, not `candidate`; `enter candidate` first fixed it. Worth noting since it's a real, easy-to-hit SR Linux CLI gotcha, not a bug in anything built here.
+3. `propose.py` against the now-actually-broken interface returned a correct proposal: `current_value: "disable"`, a real JSON-RPC `set` payload, `executed: false`.
+4. Fired that exact generated payload by hand via `curl` — SR Linux returned `{"result": [{}], ...}`, its success shape.
+5. Ran `propose.py` again — confirmed independently, through the same code path that detected the fault, that the interface was genuinely back to `admin-state enable`.
+
+That closes the loop: the proposal wasn't just plausible-looking JSON, it was a payload that a real device actually accepted and that produced the exact effect it claimed it would. This is what "the AI proposes, but the output is real and verifiable" needs to mean for the security-gate story (#9) to hold up under questioning later — asserted here with evidence, not just designed on paper.
+
+**Not yet done:** NETCONF `edit-config` XML, still blocked on confirming the real `srl_nokia-interfaces` YANG namespace (entry 30); chaining a real component #7 diagnosis into `propose.py` instead of running it standalone; any scenario beyond the one admin-state case.
+
+**Next:** confirm the YANG namespace (via `gnmic ... capabilities` or a raw NETCONF `<hello>`) and finish the NETCONF half, since "both, built together" was the explicit decision for this component.
+**Open questions:** none blocking.
+
+### 2026-09-14 (30) — Component #8 kickoff: confirmed real NETCONF + JSON-RPC reachability on the lab
+
+**Focus:** before designing component #8 (remediation proposal), verify — not assume — that this lab's SR Linux image (`ghcr.io/nokia/srlinux:latest`) actually exposes a config-push interface, given the roadmap names NETCONF/RESTCONF as the flagship differentiator and nothing had confirmed that against this specific lab yet. Also an explicit sequencing decision this session: continue building NetMind (component #8) rather than pausing for the personal platform or the Kubernetes/AWS gap-closing from the original `signal-path-plan.md` sequence — both still open, deliberately deferred again, recorded in the project's living plan doc.
+
+**Checked directly on `srl1` via `sr_cli`, not assumed:**
+- `info system netconf-server mgmt` — enabled by default, riding NETCONF-over-SSH on port 830 (`system ssh-server mgmt-netconf`, `disable-shell true` — a dedicated NETCONF subsystem listener, not an interactive shell, which is correct and expected).
+- `info system json-rpc-server` — enabled by default, HTTP and HTTPS both, bound to the `mgmt` network-instance, HTTPS via a self-signed `clab-profile` TLS profile.
+- **Important terminology correction:** SR Linux does not implement standard RESTCONF. Its actual config-push HTTP API is called JSON-RPC, using the same `srl_nokia` YANG model family gnmic already streams telemetry from for components #2 onward — not a third schema to learn, and worth naming accurately going forward rather than calling it "RESTCONF" out of habit from the original roadmap wording.
+
+**Reachability tested for real, from the host shell (not inside the container) — this matters because `diagnosis-assistant` and any future remediation component run host-level, same placement decision as component #7:**
+```
+timeout 3 bash -c 'cat < /dev/null > /dev/tcp/172.100.100.11/830' && echo reachable
+# -> port 830 reachable
+curl -sk -u admin:'NokiaSrl1!' -X POST https://172.100.100.11/jsonrpc -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"get","params":{"commands":[{"path":"/system/name/host-name","datastore":"state"}]}}'
+# -> {"result": ["srl1"], "id": 1, "jsonrpc": "2.0"}
+```
+Both confirmed reachable directly, with no port-publishing needed — this is native Linux Docker (the Containerlab distro), not Docker Desktop, so the `netmind-mgmt` bridge network's container IPs (`172.100.100.11`/`.12`) are directly routable from the host shell, unlike Prometheus/Chroma which needed explicit host-port publishing to cross the Windows/WSL2 boundary in this project's other flows.
+
+**Not yet decided:** which interface component #8 actually uses to push config — NETCONF or JSON-RPC or both; what specific problem-to-remediation mappings make sense on a 2-node lab with no fault-injection mechanism yet; whether the same hybrid (template-first, LLM-fallback, validate-before-trust) pattern from component #7 applies here too; and what a "proposal" actually is as output, since components #9 (security gate) and #10 (executor) don't exist yet — nothing should execute anything from #8.
+
+**Next:** work through those open design questions before writing any code for #8.
+**Open questions:** see above — all open, none blocking further discussion.
+
 ### 2026-09-13 (29) — Component #7 stage 1: closed out
 
 **Focus:** the actual exit criterion (`BACKLOG.md` item 24) — one real question through `assistant.py` with retrieval, metrics, and citations all showing up correctly together.
