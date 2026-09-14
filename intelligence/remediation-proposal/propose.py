@@ -12,11 +12,15 @@ Usage:
     python propose.py <node-ip> <interface>
     python propose.py 172.100.100.11 ethernet-1/1
 
-The json_rpc_set_payload in the output has been reviewed against
-Nokia's documented JSON-RPC "set" shape but NOT yet fired against the
-live lab -- see BACKLOG.md for the planned one-time manual validation
-(done by a human, standing in for the security gate that doesn't exist
-yet, exactly the review step #9 will formalize later).
+Both protocols have now been fired for real against the live lab and
+confirmed working: the json_rpc_set_payload (PROGRESS_LOG entry 31)
+and the netconf_edit_config_xml / netconf_commit_xml pair (entry 33,
+using a namespace confirmed directly from srl1's own NETCONF <hello>
+exchange in entry 32). Each protocol independently had a real fault
+created, propose.py detect and build the payload, the payload applied
+by hand, and propose.py independently confirm the fix took effect --
+standing in for the human-approval step component #9 will formalize
+later. See README.md.
 """
 
 import json

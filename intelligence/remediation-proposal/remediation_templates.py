@@ -16,22 +16,26 @@ Only one scenario is templated for stage 1 (2026-09-14): bringing a
 disabled interface back to admin-state enable. See
 docs/roadmap/BACKLOG.md for what's deliberately out of scope for now.
 
-JSON-RPC "set" payload shape follows the same {path, ...} style
-confirmed live for "get" (PROGRESS_LOG entry 31) -- the "set" method
-and its action/value fields are Nokia's documented JSON-RPC API shape,
-but have NOT yet been executed against the live lab (see propose.py's
-docstring and BACKLOG.md) -- treat json_rpc_set_payload as a reviewed,
-not-yet-fired proposal until that validation happens.
+Both payload shapes have been fired for real against the live lab and
+confirmed working, not just reviewed against documentation:
 
-The NETCONF edit-config XML is intentionally NOT built here yet -- the
-exact srl_nokia-interfaces YANG module namespace hasn't been confirmed
-against this lab (get it wrong and NETCONF silently rejects or ignores
-the edit), so writing it now would mean guessing at something this
-project has explicitly committed to never guessing at. See
-PROGRESS_LOG entry 30/BACKLOG.md for the open item to confirm it via
-gnmic's own capabilities output before this gets filled in.
+- json_rpc_set_payload (PROGRESS_LOG entry 31) -- a real fault was
+  created, this exact payload shape was applied by hand, and the
+  device's own state confirmed the fix took effect.
+- netconf_edit_config_xml / netconf_commit_xml (PROGRESS_LOG entry
+  33), using a namespace captured directly from srl1's own NETCONF
+  <hello> exchange (entry 32), not guessed:
+  urn:nokia.com:srlinux:chassis:interfaces?module=srl_nokia-interfaces
+  The same <hello> advertises candidate:1.0 and confirmed-commit:1.1
+  -- NETCONF here follows the identical candidate-then-commit
+  two-phase model already confirmed working via sr_cli (entry 31),
+  and entry 33 proved it by hand: edit-config alone returned <ok/>
+  but left device state unchanged (confirmed via a JSON-RPC get
+  immediately after), and only the separate <commit/> RPC actually
+  applied the change.
 """
 
+INTERFACES_NAMESPACE = "urn:nokia.com:srlinux:chassis:interfaces"
 YANG_PATH_TEMPLATE = "/interface[name={interface}]/admin-state"
 
 
@@ -56,12 +60,34 @@ def interface_admin_up(interface: str, current_value: str) -> dict:
         },
     }
 
+    netconf_edit_config_xml = f"""<rpc message-id="101" xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+  <edit-config>
+    <target><candidate/></target>
+    <config>
+      <interface xmlns="{INTERFACES_NAMESPACE}">
+        <name>{interface}</name>
+        <admin-state>{target_value}</admin-state>
+      </interface>
+    </config>
+  </edit-config>
+</rpc>"""
+
+    # Stages the change into candidate only -- SR Linux's NETCONF server
+    # requires this second, separate RPC to actually apply it (same
+    # candidate/commit model as sr_cli's "commit now"; see module
+    # docstring).
+    netconf_commit_xml = (
+        '<rpc message-id="102" xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">'
+        "<commit/></rpc>"
+    )
+
     return {
         "interface": interface,
         "yang_path": path,
         "current_value": current_value,
         "proposed_value": target_value,
         "json_rpc_set_payload": json_rpc_set_payload,
-        "netconf_edit_config_xml": None,  # pending confirmed YANG namespace -- see module docstring
+        "netconf_edit_config_xml": netconf_edit_config_xml,
+        "netconf_commit_xml": netconf_commit_xml,
         "executed": False,
     }

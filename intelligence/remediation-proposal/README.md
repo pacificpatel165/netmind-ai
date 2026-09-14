@@ -79,25 +79,42 @@ proposal path, manually disable the interface first (from `sr_cli` on
 `srl1`: `enter candidate`, `interface ethernet-1/1`, `admin-state
 disable`, `commit now`), then re-run `propose.py`.
 
-## Verified (2026-09-14, PROGRESS_LOG entry 31)
+## Verified (2026-09-14, PROGRESS_LOG entries 31–33)
 
-The full loop was proven end-to-end against the live lab, not just
-reviewed: a real fault was created by hand (`ethernet-1/1` disabled
-via `sr_cli`), `propose.py` correctly detected it and generated a
-JSON-RPC `set` payload, that exact payload was fired by hand and
-returned SR Linux's success shape, and `propose.py` independently
-confirmed the interface was genuinely back to `admin-state enable`.
-The JSON-RPC half of this component is real and tested, not a guess.
+Both protocols have now been proven end-to-end against the live lab,
+not just reviewed — component #8 stage 1 is genuinely done for both,
+not half-done.
+
+**JSON-RPC:** a real fault was created by hand (`ethernet-1/1`
+disabled via `sr_cli`), `propose.py` correctly detected it and
+generated a JSON-RPC `set` payload, that exact payload was fired by
+hand and returned SR Linux's success shape, and `propose.py`
+independently confirmed the interface was genuinely back to
+`admin-state enable`.
+
+**NETCONF:** the namespace was captured directly from `srl1`'s own
+NETCONF `<hello>` capabilities exchange (`ssh -p 830 -s
+admin@<node-ip> netconf`) rather than assumed from documentation —
+`urn:nokia.com:srlinux:chassis:interfaces?module=srl_nokia-interfaces`.
+The same `<hello>` confirmed SR Linux's NETCONF server advertises
+`candidate:1.0` and `confirmed-commit:1.1`, meaning NETCONF here
+follows the identical candidate-then-commit two-phase model already
+proven via `sr_cli`. Both real RPCs were then fired by hand over a
+manual NETCONF-over-SSH session: `netconf_edit_config_xml` returned
+`<ok/>` but a JSON-RPC `get` right after still showed `"disable"`,
+confirming `edit-config` alone only stages the change into
+candidate; `netconf_commit_xml` then returned `<ok/>` and the same
+JSON-RPC `get` afterward showed `"enable"` — the device genuinely
+changed state. (The manual client `<hello>` advertised only
+`base:1.0` to keep the hand-pasted exchange on simple `]]>]]>`
+framing rather than RFC 6242 chunked framing.)
 
 ## Not yet done
 
-- **NETCONF `edit-config` XML** — blocked on confirming the real
-  `srl_nokia-interfaces` YANG module namespace against this lab
-  (`gnmic ... capabilities` output, or a raw NETCONF `<hello>`
-  capabilities exchange) rather than guessing at it. Get the
-  namespace wrong and NETCONF silently rejects or ignores the edit —
-  worth verifying properly rather than shipping an untested guess.
 - **Chaining a real component #7 diagnosis into this**, rather than
   running standalone against a bare interface name.
 - **Scope beyond the one admin-state scenario** — deliberately not
   built until this one is proven end-to-end.
+- **Component #9 (security gate)** hasn't started — the natural
+  next step now that #8 produces real, verifiable proposals for it
+  to gate.
