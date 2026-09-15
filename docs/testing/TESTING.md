@@ -335,6 +335,45 @@ admin-state case.
 
 ---
 
+## 9. Security gate (`intelligence/security-gate/`)
+
+**Setup — host-level, same pattern as #7/#8:**
+```bash
+cd ~/netmind-lab/intelligence/security-gate
+python3 -m venv .venv          # first time only
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**Not yet run against the live stack (2026-09-15, PROGRESS_LOG entry
+39) — built and reviewed only.** The real exit test, once run:
+```bash
+python gate.py 172.100.100.11 ethernet-1/1
+```
+1. Create a real fault first (same `sr_cli` steps as component #8).
+2. Run `gate.py`, review the printed proposal, and type `y` at the
+   prompt. Confirm `audit_log.jsonl` gets a new line with
+   `"decision": "approved"` and a `proposal_hash` — and confirm the
+   printed message is honest that nothing was actually applied
+   (component #10 doesn't exist yet).
+3. Create a fault again (or run against the still-disabled interface
+   if applicable), run `gate.py` again, and this time press Enter
+   with no input at the prompt. **This is the actual default-deny
+   test** — confirm it's recorded as `"decision": "rejected"`, not
+   silently approved. A default-deny claim that's never been proven
+   with a blank-Enter test is an assumption, not a verified fact.
+4. Inspect `audit_log.jsonl` directly (`cat` or `python -m json.tool`
+   per line) — confirm both entries are well-formed JSON, timestamps
+   are real, and the `proposal_hash` for the approved entry matches
+   what you'd compute by hand from the proposal's deterministic
+   fields (a spot-check worth doing at least once, not every run).
+
+**Exit criterion (not yet met):** a real approval and a real
+rejection, both correctly recorded, with default-deny proven rather
+than assumed.
+
+---
+
 ## Full-stack smoke test (all components in one pass)
 
 Useful before starting component #9, or after any lab-wide change

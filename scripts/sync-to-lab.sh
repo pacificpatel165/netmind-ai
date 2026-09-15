@@ -25,14 +25,22 @@ mkdir -p "$REPO_NATIVE"
 # container's bind mount still points at the now-deleted file, and
 # Docker fails with a "not a directory" mount error. See lab-up.sh and
 # lab/README.md's "known gotcha" section.
-# --exclude on intelligence/diagnosis-assistant/.venv/ and
-# intelligence/remediation-proposal/.venv/ is the same class of fix as
+# --exclude on intelligence/diagnosis-assistant/.venv/,
+# intelligence/remediation-proposal/.venv/, and
+# intelligence/security-gate/.venv/ is the same class of fix as
 # clab-netmind-2node/ above: a Python virtual environment created
 # natively (see docs/setup/07-diagnosis-assistant.md §6) exists only on
 # native fs, never in the Windows-drive repo -- without this exclude,
 # every sync would delete it and force a full `pip install` on the
 # next run.
-rsync -a --delete --exclude='.git' --exclude='lab/topologies/clab-netmind-2node/' --exclude='intelligence/diagnosis-assistant/.venv/' --exclude='intelligence/remediation-proposal/.venv/' "$REPO_WIN/" "$REPO_NATIVE/"
+# --exclude on intelligence/security-gate/audit_log.jsonl is the same
+# issue again, but for data instead of a venv: gate.py creates it
+# natively the first time someone approves/rejects a proposal, it
+# isn't (yet) part of the Windows-drive repo, and a --delete sync
+# would silently wipe a real audit trail rather than just cost a
+# rebuild -- see that component's README.md for why whether this file
+# should even be committed to git is still an open question.
+rsync -a --delete --exclude='.git' --exclude='lab/topologies/clab-netmind-2node/' --exclude='intelligence/diagnosis-assistant/.venv/' --exclude='intelligence/remediation-proposal/.venv/' --exclude='intelligence/security-gate/.venv/' --exclude='intelligence/security-gate/audit_log.jsonl' "$REPO_WIN/" "$REPO_NATIVE/"
 
 echo "Synced $REPO_WIN -> $REPO_NATIVE"
 echo "Deploy from: $REPO_NATIVE/lab/topologies/"

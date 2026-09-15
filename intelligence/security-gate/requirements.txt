@@ -1,0 +1,8 @@
+requests==2.32.3
+# chromadb pulled in transitively: gate.py imports
+# remediation-proposal/diagnose_and_propose.py, which imports
+# diagnosis-assistant/assistant.py (retrieval_client.py needs it).
+# Same pin as remediation-proposal/requirements.txt and
+# diagnosis-assistant/requirements.txt -- see retrieval-index/README.md's
+# "known gotcha" for why the client/server pin has to stay in lockstep.
+chromadb==0.5.23

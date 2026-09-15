@@ -35,6 +35,21 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-15 (39) — Component #9 kickoff: `gate.py` built, not yet run
+
+**Focus:** the security gate — the differentiator per the roadmap. Design confirmed explicitly before writing code (asked and approved this session): stage 1 builds the two pieces that don't depend on an unverified claim — explicit-approval + audit log — against component #8's already-verified `diagnose_and_propose()`. Least-privilege credential scoping is deliberately deferred, not guessed at: every component so far reuses the lab's one shared `admin`/`NokiaSrl1!` credential, and building a genuinely scoped SR Linux AAA role means first checking, live, whether this image's local-AAA system actually supports restricting a user to just the `admin-state` leaf — the same discipline every NETCONF/JSON-RPC claim in this project has gone through, not skipped for this one.
+
+**Built:** `intelligence/security-gate/gate.py` — reuses `diagnose_and_propose()` (component #8) as a library, same "prove a piece, then chain" pattern used throughout. `proposal_hash()` computes a SHA-256 over just the deterministic proposal fields (interface, values, both payloads) — `rationale` is deliberately excluded from the hash since its wording can legitimately vary run to run (different retrieval hits, different model sampling) without the underlying proposal having changed at all. The approval prompt is default-deny literally: anything other than an explicit `y`/`yes`, including a blank Enter, is recorded as a rejection — there is no code path that applies a change without an explicit yes. The audit log (`audit_log.jsonl`) is opened in `"a"` mode only, and the module's own docstring is explicit about what that does and doesn't guarantee: append-only in this code's behavior, not filesystem-enforced or tamper-evident against someone editing the file directly — real tamper-evidence is named as a real stage-2 item, not silently claimed as already done. Every audit entry records a decision, not an executed change — component #10 doesn't exist, so nothing approved here can actually be applied to a device yet.
+
+**Also carried forward directly from entry 38's finding:** `gate.py`'s `display_proposal()` prints the `rationale` field last, explicitly labeled as a best-effort AI explanation to verify independently, not evidence — not a generic design choice, a direct response to having just seen a real rationale come back honest-but-thin.
+
+**Housekeeping:** `scripts/sync-to-lab.sh` got a third `.venv` exclude (`intelligence/security-gate/.venv/`) and a new exclude for `intelligence/security-gate/audit_log.jsonl` — anticipating the same "native-only file gets wiped by --delete" issue that hit `.venv/` before, this time for real audit data rather than a rebuildable environment.
+
+**Not yet done:** run against the live stack — propose a fault, approve it, confirm `audit_log.jsonl` gets a correct entry; propose again, reject it (including via a blank Enter, to prove default-deny is real rather than assumed), confirm that's recorded correctly too. Credential scoping itself — still needs live SR Linux AAA investigation before it can be designed, let alone built.
+
+**Next:** run the live test.
+**Open questions:** whether `audit_log.jsonl` should be committed to git (an audit trail arguably belongs in version history) or treated as local generated state like Chroma's data — deliberately left open in the README rather than decided unilaterally.
+
 ### 2026-09-15 (38) — `diagnose_and_propose.py` re-verified with the timeout fix: closed
 
 **Focus:** the re-run owed from entry 37, against the same still-disabled `ethernet-1/1`, with `ollama_client.py`'s timeout raised to 300s.
