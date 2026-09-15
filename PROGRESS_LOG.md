@@ -33,7 +33,24 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
-## Session log
+### 2026-09-15 (40) — Component #9 live-verified: default-deny, approval, and audit trail all proven
+
+**Focus:** the live test owed from entry 39 — a real rejection (via blank Enter, the actual proof default-deny isn't just a docstring claim) and a real approval, both checked against the audit log and, for the approval, against the live device.
+
+**The actual test, both halves real:**
+1. `gate.py` run against a real fault (`ethernet-1/1` disabled via `sr_cli`), rejected by pressing Enter with no input → `audit_log.jsonl` recorded `"decision": "rejected"`.
+2. `gate.py` run again, this time approved with `y` → recorded `"decision": "approved"`, printed output correctly stated nothing was applied.
+3. Checked directly on the device afterward (`sr_cli`, `info interface ethernet-1/1`) — still `admin-state disable`. The "nothing was applied" claim wasn't just trusted, it was checked against real device state, and it held: component #10 genuinely doesn't exist, so "approved" changed nothing on the wire.
+4. Both audit log lines confirmed well-formed JSON (`json.tool` and a `json.loads`-every-line sanity check).
+
+**A real mistake in my own test instructions, caught by actually running the test:** entry 39's verification steps told the user to expect the two entries' `proposal_hash` values to *differ*, reasoning that the rationale text differs between runs. That's wrong, and contradicts `gate.py`'s own design: `proposal_hash()` deliberately hashes only the deterministic fields and excludes `rationale` on purpose (see `gate.py`'s docstring — the hash represents the change being approved, not the LLM's wording of it that run). Both hashes came back identical, which is the design working correctly, not a bug — same interface, same state, same deterministic payload, same hash, regardless of how component #7 phrased the rationale differently each time. Worth remembering: a verification instruction can itself be wrong, and running the real test is what catches that, not re-reading the instruction more carefully.
+
+**Component #9 stage 1 is closed:** explicit approval (default-deny proven for real), an audit trail (proven well-formed, and proven to correctly distinguish rejected vs. approved), and the "nothing applied yet" claim checked against the live device, not assumed. `README.md` and `docs/testing/TESTING.md` updated to reflect verified.
+
+**Still open, unchanged from entry 39:** least-privilege credential scoping (needs live SR Linux AAA investigation before it can even be designed); audit log tamper-evidence beyond "the code only appends"; whether `audit_log.jsonl` belongs in git.
+
+**Next:** decide between investigating credential scoping now (the one piece of #9's original roadmap scope still untouched) or starting component #10 (config-push executor) against the now-proven approval gate.
+**Open questions:** same one carried from entry 39 — audit log git tracking, still not decided.
 
 ### 2026-09-15 (39) — Component #9 kickoff: `gate.py` built, not yet run
 

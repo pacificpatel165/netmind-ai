@@ -345,32 +345,35 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**Not yet run against the live stack (2026-09-15, PROGRESS_LOG entry
-39) — built and reviewed only.** The real exit test, once run:
+**Verified 2026-09-15, PROGRESS_LOG entry 40:**
 ```bash
 python gate.py 172.100.100.11 ethernet-1/1
 ```
 1. Create a real fault first (same `sr_cli` steps as component #8).
 2. Run `gate.py`, review the printed proposal, and type `y` at the
    prompt. Confirm `audit_log.jsonl` gets a new line with
-   `"decision": "approved"` and a `proposal_hash` — and confirm the
-   printed message is honest that nothing was actually applied
-   (component #10 doesn't exist yet).
-3. Create a fault again (or run against the still-disabled interface
-   if applicable), run `gate.py` again, and this time press Enter
-   with no input at the prompt. **This is the actual default-deny
-   test** — confirm it's recorded as `"decision": "rejected"`, not
-   silently approved. A default-deny claim that's never been proven
-   with a blank-Enter test is an assumption, not a verified fact.
-4. Inspect `audit_log.jsonl` directly (`cat` or `python -m json.tool`
-   per line) — confirm both entries are well-formed JSON, timestamps
-   are real, and the `proposal_hash` for the approved entry matches
-   what you'd compute by hand from the proposal's deterministic
-   fields (a spot-check worth doing at least once, not every run).
+   `"decision": "approved"` and a `proposal_hash`.
+3. Create a fault again, run `gate.py` again, and this time press
+   Enter with no input at the prompt. **This is the actual
+   default-deny test** — confirm it's recorded as
+   `"decision": "rejected"`.
+4. Inspect `audit_log.jsonl` (`cat` or `python -m json.tool` per
+   line) — confirm both entries are well-formed JSON with real
+   timestamps. **Do not expect the two `proposal_hash` values to
+   differ** — `proposal_hash()` deliberately excludes `rationale`, so
+   the same interface in the same state hashes identically across
+   runs regardless of how the rationale text varies. Confirmed live:
+   both hashes came back identical, which is correct, not a bug.
+5. Confirm on the device itself (`sr_cli`, `info interface
+   ethernet-1/1`) that the interface's real state didn't change after
+   the "approved" run — component #10 doesn't exist, so approval
+   should have zero effect on the wire. Confirmed live: still
+   `admin-state disable` after approval.
 
-**Exit criterion (not yet met):** a real approval and a real
-rejection, both correctly recorded, with default-deny proven rather
-than assumed.
+**Exit criterion (met):** a real approval and a real rejection, both
+correctly recorded, default-deny proven with an actual blank-Enter
+test, and the "nothing applied" claim checked against the live device
+rather than just trusted.
 
 ---
 

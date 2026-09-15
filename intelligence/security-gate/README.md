@@ -85,14 +85,29 @@ Same dependencies and expected runtime as `diagnose_and_propose.py`
 `intelligence/remediation-proposal/README.md` and
 `docs/testing/TESTING.md`.
 
+## Verified (2026-09-15, PROGRESS_LOG entry 40)
+
+Both real paths tested, not just reviewed: a rejection via a blank
+Enter (the actual proof default-deny is real, not a docstring claim)
+and an approval via `y`, each checked against `audit_log.jsonl`
+afterward. For the approval, the "nothing was applied" claim was
+checked against the live device itself (`sr_cli`,
+`info interface ethernet-1/1`) — still `admin-state disable`
+afterward, confirming component #10's absence genuinely means
+nothing changed on the wire, not just that the printed message
+claimed so.
+
+**Worth noting:** the two audit entries' `proposal_hash` values came
+back identical across the reject-then-approve runs — this is the
+design working correctly, not a bug. `proposal_hash()` deliberately
+excludes `rationale` (see `gate.py`'s docstring), so the same
+interface in the same state hashes the same way regardless of how
+differently component #7 phrased the rationale each run. An earlier
+version of this component's own testing instructions wrongly expected
+the hashes to differ for that reason — corrected in entry 40.
+
 ## Not yet done
 
-- **Not run against the live stack yet** — built and reviewed, same
-  "prove it before calling it done" pattern as every other component
-  here. The real test: propose a fault, approve it, confirm
-  `audit_log.jsonl` gets a correct entry; propose again (or a fresh
-  fault), reject it (including via a blank Enter, to prove
-  default-deny is real), confirm that's recorded correctly too.
 - **Least-privilege credential scoping** — deliberately deferred, see
   above. Needs live verification of what SR Linux's local-AAA role
   system actually supports before it's designed, not guessed at.
