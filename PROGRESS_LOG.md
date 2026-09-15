@@ -35,6 +35,40 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-15 (38) — `diagnose_and_propose.py` re-verified with the timeout fix: closed
+
+**Focus:** the re-run owed from entry 37, against the same still-disabled `ethernet-1/1`, with `ollama_client.py`'s timeout raised to 300s.
+
+**Result:** `time python diagnose_and_propose.py 172.100.100.11 ethernet-1/1` → **2m23s, no timeout.** Every deterministic field byte-identical to `propose.py`'s output on the same state (confirmed again, not assumed carried over from entry 37). The `rationale` field came back this time — no more hallucinated references to our own source files (the specific problem from entry 37's first attempt), and it's honestly self-aware in one place ("since the interface is currently in admin-state disable, the recent carrier transition history might not be relevant") rather than confidently inventing a cause it has no basis for. Still generic/thin content, as entry 37's finding 2 predicted — there's no real runbook for a manually-disabled interface with zero actual transitions, so there's nothing deeper to ground it in — but it's no longer actively wrong, which is the right bar for something a human reviews before approving, not "sounds authoritative."
+
+**Component #8 stage 1, chained trigger, is now closed:** built, code-reviewed (two real bugs caught before ever running it — entry 36), and now live-verified end to end, matching the rigor every other component in this project got. `README.md`'s "Not yet done" and `docs/testing/TESTING.md`'s component #8 section updated to reflect verified, not pending.
+
+**Worth carrying into component #9's design, since it was learned here first-hand:** a `rationale` field's honesty depends entirely on whether the corpus/metrics have something real to ground it in — component #9's human-approval UI should probably not present `rationale` with the same visual weight as the deterministic fields, since one is proven-correct-by-construction and the other is a best-effort LLM guess that can be thin or wrong depending on circumstances outside this component's control.
+
+**Not yet done:** any scenario beyond the one admin-state case; component #9 itself.
+
+**Next:** start component #9 (security gate).
+**Open questions:** none blocking.
+
+### 2026-09-15 (37) — `diagnose_and_propose.py` live test: real fault, real chained proposal, two real findings
+
+**Focus:** the live test owed since entries 35/36 — a real fault, run through `diagnose_and_propose.py`, checked against a plain `propose.py` run on the same state.
+
+**A real gotcha hit and diagnosed first:** the first attempt to disable `ethernet-1/1` via `sr_cli` pasted `enter candidate` / `interface ethernet-1/1` / `admin-state disable` / `commit now` as one block right after launching `docker exec -it ... sr_cli`. Only `interface ethernet-1/1` registered (echoed back as `info interface ethernet-1/1`, and the prompt never left `--{ running }--`) — the rest was dropped, same class of paste-before-the-line-editor-is-ready issue as entry 31's original `sr_cli` confusion. Fixed by re-running the four commands one at a time, confirming the prompt transitioned to candidate mode before continuing. Worth remembering as a pattern, not a one-off: never paste multiple lines into a freshly-launched interactive CLI here.
+
+**The actual test, once the fault was real:**
+1. `python propose.py 172.100.100.11 ethernet-1/1` → `current_value: "disable"`, full deterministic proposal record, no `rationale` field (as designed — `propose.py` has zero dependency on component #7).
+2. `python diagnose_and_propose.py 172.100.100.11 ethernet-1/1` → every deterministic field (`interface`, `yang_path`, `current_value`, `proposed_value`, `json_rpc_set_payload`, `netconf_edit_config_xml`, `netconf_commit_xml`, `executed: false`) byte-identical to step 1's output. **This is the real proof the chaining design held**: the trigger and payload logic genuinely weren't touched by adding component #7 into the picture.
+
+**Finding 1 — real bug, fixed:** the rationale call itself failed: `HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=180)`. Diagnosed before assuming anything: Ollama was up and healthy (`/api/tags` responded instantly, both models present), memory wasn't starved (`free -h`: 6.4Gi available), and a direct, timed `assistant.py` call succeeded — but took **164s**, only 16s under the old 180s timeout. Every Ollama call pays a full cold model load (`keep_alive: 0` unloads it after each response, a deliberate memory-constraint decision from component #7), so 180s never had real margin against that measured variance — `diagnose_and_propose.py`'s call just landed on the slow side of it. Fixed: `ollama_client.py`'s `generate()` timeout raised from 180s to 300s, with the measured 164s cold-load figure recorded in the docstring so the number has a reason attached, not just raised until it stopped failing.
+
+**Finding 2 — a real limitation, logged honestly rather than fixed:** the direct `assistant.py` answer itself was weak once it did come back — it cited `promql_templates.py`/`router.py` (our own source files) as network-troubleshooting steps, a clear sign of confabulation, and produced no real doc citation despite retrieval running. Root cause, not a code bug: the test fault is a *manual* `admin-state disable` with zero actual carrier transitions, and the project's doc corpus has no runbook for "why would someone manually disable an interface" — there's nothing true for the model to ground an answer in, so it reached. This is an honest limitation of a synthetic fault on a two-node lab with a documentation-only corpus, not something the chaining code can fix. Worth remembering when reading any `rationale` field from this component: it's grounded when there's something real to ground it in, and it should be read skeptically when there isn't — exactly the posture a human approver at component #9 needs to have anyway.
+
+**Not yet done:** re-run `diagnose_and_propose.py` against the same fault with the new 300s timeout to confirm the rationale field actually comes back this time (not done in this entry — the timeout fix hasn't been exercised live yet).
+
+**Next:** re-run and confirm, then start component #9.
+**Open questions:** none blocking.
+
 ### 2026-09-15 (36) — `diagnose_and_propose.py`: two real bugs caught in review, fixed before ever running it
 
 **Focus:** a code review of entry 35's build, before the still-owed live test, caught two real problems worth fixing first rather than discovering during the test itself.

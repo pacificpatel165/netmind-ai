@@ -15,11 +15,19 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
 
-def generate(prompt: str, timeout: int = 180) -> str:
+def generate(prompt: str, timeout: int = 300) -> str:
     """Single-shot, non-streaming generate call. keep_alive: 0 means the
     model unloads from memory immediately after this response -- the
     confirmed-working fix from the 2026-09-11 memory investigation,
-    not a manual `ollama stop` and not the CLI's KEEP_ALIVE env var."""
+    not a manual `ollama stop` and not the CLI's KEEP_ALIVE env var.
+
+    Every call therefore pays a full cold model load, not just
+    generation time. Timeout raised from 180s to 300s on 2026-09-15
+    (PROGRESS_LOG entry 37) after a real, timed cold-load run measured
+    164s -- only 16s of margin under the old timeout, and a real
+    diagnose_and_propose.py call (component #8) did in fact time out
+    at 180s. 300s is a deliberate safety margin against that measured
+    variance, not a guess."""
     resp = requests.post(
         f"{OLLAMA_URL}/api/generate",
         json={

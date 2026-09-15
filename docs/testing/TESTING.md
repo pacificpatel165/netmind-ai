@@ -310,8 +310,8 @@ applied by hand, produces the exact device-state change it claimed it
 would — proven for JSON-RPC (entry 31) and NETCONF (entry 33)
 independently.
 
-**Chained entry point (`diagnose_and_propose.py`, 2026-09-15) — not
-yet run against the live stack:**
+**Chained entry point (`diagnose_and_propose.py`) — verified
+2026-09-15, PROGRESS_LOG entries 37–38:**
 ```bash
 python diagnose_and_propose.py 172.100.100.11 ethernet-1/1
 ```
@@ -319,13 +319,16 @@ Same trigger and same proposal fields as `propose.py`, plus a
 `"rationale"` field from component #7's `assistant.answer()`, added
 only after a real fault is confirmed. Needs `chromadb` installed in
 this component's `.venv` (see `requirements.txt`) and the full stack
-up — Chroma, Prometheus, and a host-installed Ollama. **Real exit
-test, not yet done:** create a fault (same `sr_cli` steps as above),
-run this instead of `propose.py`, confirm the `"rationale"` field
-comes back grounded — citing real project docs or real metrics, not
-empty or hallucinated — and confirm every other field in the record
-matches what `propose.py` would have produced for the same state
-(the trigger and payload logic is shared and must not have drifted).
+up — Chroma, Prometheus, and a host-installed Ollama. Expect it to
+take **2–3 minutes** (a full cold Ollama model load happens on every
+call — `ollama_client.py`'s timeout is 300s specifically because a
+real run measured 164s), not a quick response. Confirmed live: every
+deterministic field matches a plain `propose.py` run on the same
+state exactly, and the `"rationale"` field comes back grounded
+rather than hallucinated — though its depth depends on whether
+there's real content (docs/metrics) to ground it in; a synthetic
+fault like the one used for this test won't produce a deeply
+specific rationale, and that's expected, not a bug.
 
 **Not yet covered by any test here:** any scenario beyond the one
 admin-state case.

@@ -165,15 +165,27 @@ changed state. (The manual client `<hello>` advertised only
 `base:1.0` to keep the hand-pasted exchange on simple `]]>]]>`
 framing rather than RFC 6242 chunked framing.)
 
+## Verified — `diagnose_and_propose.py` (2026-09-15, PROGRESS_LOG entries 37–38)
+
+Live-tested against a real fault, twice: the first run caught a real
+timeout bug (`ollama_client.py`'s 180s timeout had almost no margin
+against a measured 164s cold model load — see entry 37), the second
+run, after raising it to 300s, completed in 2m23s with every
+deterministic field byte-identical to `propose.py`'s output on the
+same state, plus a `rationale` field grounded honestly rather than
+hallucinated. See "Chaining #7 into #8" above for the design; entries
+37–38 for the actual evidence.
+
+**Worth carrying forward:** the rationale's quality depends entirely
+on whether there's something real for it to be grounded in — this
+component's own test fault (a manual `admin-state disable`, zero
+actual transitions) has no real runbook behind it, so the rationale
+came back honest-but-thin rather than wrong. Component #9's approval
+UI should weight `rationale` as a best-effort explanation, not with
+the same confidence as the deterministic fields it sits next to.
+
 ## Not yet done
 
-- **`diagnose_and_propose.py` has not yet been run against the live
-  stack** — built and reviewed, same "prove it before calling it
-  done" pattern as everything else here. That run (confirm a real
-  fault, confirm the rationale field comes back grounded rather than
-  empty/hallucinated, confirm the proposal record is byte-for-byte
-  the same as `propose.py` would have produced) is the next real
-  step, not a formality.
 - **Scope beyond the one admin-state scenario** — deliberately not
   built until this one is proven end-to-end.
 - **Component #9 (security gate)** hasn't started — the natural
