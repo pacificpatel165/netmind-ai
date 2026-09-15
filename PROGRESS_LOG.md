@@ -35,6 +35,45 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ## Session log
 
+### 2026-09-15 (36) — `diagnose_and_propose.py`: two real bugs caught in review, fixed before ever running it
+
+**Focus:** a code review of entry 35's build, before the still-owed live test, caught two real problems worth fixing first rather than discovering during the test itself.
+
+**Bug 1 — the rationale question silently doubled the Ollama calls.** `RATIONALE_QUESTION_TEMPLATE`'s original wording matched no `promql_templates.py` keyword, so `router.py`'s `match_template()` always returned `None` and every rationale call fell through to the LLM-generated-PromQL fallback — one wasted Ollama call generating a PromQL query nobody needed, on top of the real answer call, and exercising the fallback's known no-repair-loop gap (`BACKLOG.md` item 23) on every single proposal for no reason. Fixed by rewording the question to genuinely ask about recent carrier transition history (a real, useful thing to ground the rationale in — a manually disabled interface with a recent flap history might be masking a problem the fix alone won't address), which also happens to match the `flap_history` template's keywords and routes through the fixed template instead of the fallback. Deliberate double benefit, not a keyword chosen just to dodge the bug.
+
+**Bug 2 — a missing `chromadb` install would have looked like a live-service outage.** The broad `except Exception` around the rationale-generation call would have caught `ImportError` too, turning a skipped `pip install -r requirements.txt` into a `"(rationale unavailable: No module named 'chromadb')"` note that reads like Ollama or Chroma being down. Fixed by splitting the `import assistant` out into its own `try/except ImportError`, re-raised as a pointed `RuntimeError` naming the actual fix, separate from the genuinely-broad catch around runtime failures (Ollama unreachable, Chroma empty, etc.).
+
+**Not yet done:** the live test itself — still the same one described in entry 35.
+
+**Next:** run it.
+**Open questions:** none blocking.
+
+### 2026-09-15 (35) — Chained component #7 into #8: `diagnose_and_propose.py`
+
+**Focus:** the decision posed at the end of entry 33/34 — security gate (#9) now, against `propose.py` as-is, vs. chaining a real component #7 diagnosis into #8 first so #9 has a realistic diagnosis-driven trigger to gate. Decided: chain first.
+
+**Design confirmed explicitly before writing code** (asked and approved this session): the deterministic state-check trigger (`state_client.get_admin_state` → `remediation_templates.interface_admin_up`) stays completely unchanged; component #7's `assistant.answer()` is called only after a real fault is already confirmed, and its output is attached to the proposal record as a new `"rationale"` string field — read-only, human-facing, never parsed back into code, never near the YANG path or value. Same rule `remediation_templates.py` already enforces for a different reason (LLM never authors the structured payload); chaining #7 in as context doesn't relax it.
+
+**Built:** `intelligence/remediation-proposal/diagnose_and_propose.py` — a second entry point alongside the original `propose.py` (kept, unchanged, still the right tool for a bare state check with no component #7 dependency). Imports `assistant.answer()` from the sibling `diagnosis-assistant/` directory via a `sys.path` insert (same "reuse the proven piece as a library" pattern component #7 used for component #6's Chroma collection), deferred to inside the function so `assistant.py`'s own imports (chromadb, the Ollama client) are only required on the path that actually needs them. A rationale-generation failure (Ollama down, Chroma empty, ...) degrades to a plain note in the rationale field rather than blocking the proposal — a diagnosis outage shouldn't withhold an already-confirmed fix.
+
+**Also updated:** `requirements.txt` (added `chromadb==0.5.23`, pinned to match `diagnosis-assistant/requirements.txt` and `retrieval-index`'s server image — see that component's own "known gotcha" about client/server pin drift); `README.md` (new "Chaining #7 into #8" section, layout/running-it entries for the new file, "Not yet done" updated).
+
+**Not yet done:** `diagnose_and_propose.py` has not been run against the live stack yet — built and reviewed only. The real exit test: create a fault, run it, confirm the rationale field comes back grounded (not empty, not hallucinated) and the proposal record is otherwise identical to what `propose.py` would have produced for the same state.
+
+**Next:** run that live test, then start component #9 (security gate) against the now-chained trigger.
+**Open questions:** none blocking.
+
+### 2026-09-15 (34) — Consolidated testing guide, before starting component #9
+
+**Focus:** before starting the security gate (#9) — which exists specifically to sit in front of #8's proposals and everything upstream of it — consolidate every component's setup/verify commands into one place (`docs/testing/TESTING.md`), so nothing already proven gets silently missed or forgotten while building the gate. Each per-component README's own "Running it"/"Verifying it" section remains the source of truth for the reasoning behind each step; this file exists purely so a full-stack pass doesn't require opening eight READMEs in sequence.
+
+**Built `docs/testing/TESTING.md`:** one section per component (#1–8), each with its real setup commands, its real verification commands (pulled from the actual READMEs and, where a genuine end-to-end proof exists, the exact command and expected result from its `PROGRESS_LOG.md` entry — e.g. component #7's entry 29 exit test, component #8's entries 31/33 JSON-RPC and NETCONF proofs), and an explicit "Exit criterion" line distinguishing what's actually been proven against the live lab from what's only been reviewed. Added a "Full-stack smoke test" section at the end — one script-shaped pass through everything scriptable (Prometheus/Grafana stay manual browser checks) — for exactly this moment: before #9 starts gating a pipeline, know for real whether every piece it's gating still works.
+
+**Not yet done:** this file will need a fresh pass once #9 exists (it'll need its own setup/verify section, and #8's "how to fire a proposal" instructions will need an "…and now it goes through the gate first" caveat).
+
+**Next:** decide the #9 vs. #7→#8-chaining question posed at the end of entry 33, then start on whichever is chosen.
+**Open questions:** none blocking.
+
 ### 2026-09-14 (33) — Component #8 stage 1 closed: NETCONF fired and confirmed, both protocols proven
 
 **Focus:** finish the "Not yet done" item from entry 32 — the NETCONF payloads had a confirmed namespace but had never actually been applied against the live lab. Same rigor already given to JSON-RPC (entry 31) was owed here before calling "both protocols, built together" (the entry 30 decision) genuinely done.

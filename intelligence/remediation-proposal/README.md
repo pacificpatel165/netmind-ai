@@ -34,13 +34,19 @@ device.
   problem to demonstrate: manually disable an interface to create a
   real fault, then have this component detect it and propose the
   fix.
-- **Trigger: standalone first, not yet chained off component #7.**
-  `propose.py` takes a node IP and interface name directly rather than
-  requiring a real diagnosis-assistant citation as input — same
-  "prove the piece in isolation before wiring it into the bigger
-  pipeline" pattern `router.py` went through before `assistant.py`
-  called it. Chaining a real #7 diagnosis into this is a deliberate
-  next step, not done yet.
+- **Trigger: standalone first, then chained (2026-09-15).**
+  `propose.py` takes a node IP and interface name directly — the
+  original "prove the piece in isolation before wiring it into the
+  bigger pipeline" pattern `router.py` went through before
+  `assistant.py` called it, and it's kept exactly as-is. A second
+  entry point, `diagnose_and_propose.py`, was added once component #8
+  itself was fully proven (see "Verified" below): same node-IP +
+  interface arguments, same deterministic device-state trigger, same
+  proposal-record fields — but once a real fault is confirmed, it
+  also calls component #7's `assistant.answer()` and attaches the
+  result as a new `"rationale"` string field. See "Chaining #7 into
+  #8" below for why that split (trigger vs. rationale) matters and is
+  kept strict.
 - **Placement: host-level, same reasoning as component #7** — reaches
   `srl1`/`srl2` directly over their container IPs on `netmind-mgmt`,
   confirmed directly reachable from the host shell with no
@@ -59,9 +65,15 @@ device.
   deliberately left unbuilt (`None`) until the real
   `srl_nokia-interfaces` YANG namespace is confirmed — see "Not yet
   done".
-- `propose.py` — the CLI entry point. Reads current state, and only
-  if the interface is genuinely down, builds and prints a proposal
-  record (`executed: false`, always).
+- `propose.py` — the original CLI entry point. Reads current state,
+  and only if the interface is genuinely down, builds and prints a
+  proposal record (`executed: false`, always). No dependency on
+  component #7 at all — still the right tool for a bare state check.
+- `diagnose_and_propose.py` — the chained entry point (2026-09-15).
+  Same trigger and same proposal record as `propose.py`, plus a
+  `"rationale"` field from component #7's diagnosis assistant, called
+  only after a real fault is already confirmed. See "Chaining #7 into
+  #8" below.
 
 ## Running it
 
@@ -78,6 +90,50 @@ that's correct behavior, not a bug. To actually exercise the
 proposal path, manually disable the interface first (from `sr_cli` on
 `srl1`: `enter candidate`, `interface ethernet-1/1`, `admin-state
 disable`, `commit now`), then re-run `propose.py`.
+
+`diagnose_and_propose.py` runs the same way, but additionally needs
+this component's `.venv` to have `chromadb` installed (see
+`requirements.txt`) and the full stack up — Chroma, Prometheus, and a
+host-installed Ollama, the same dependencies component #7 itself
+needs (`docs/setup/07-diagnosis-assistant.md`):
+
+```bash
+python diagnose_and_propose.py 172.100.100.11 ethernet-1/1
+```
+
+## Chaining #7 into #8 (2026-09-15)
+
+Before starting component #9 (the security gate), the explicit
+decision this session was: give #9 a realistic diagnosis-driven
+proposal to gate, rather than one triggered by a hand-typed CLI arg —
+closer to the real end-to-end story (diagnose → propose → gate →
+execute).
+
+**The split is strict, and it's the whole design:**
+- **The trigger stays exactly what it was** — `state_client.
+  get_admin_state()` reading real device state, unchanged. Whether a
+  proposal gets built at all, and everything in its
+  `json_rpc_set_payload` / `netconf_edit_config_xml` /
+  `netconf_commit_xml`, comes from that deterministic check and
+  `remediation_templates.py`'s templates — exactly as before.
+- **Component #7 is called only after a fault is already confirmed**,
+  and its answer is attached as a new `"rationale"` string field —
+  read-only, human-facing context for whoever reviews the proposal
+  later (component #9's approval step). It is never parsed, never
+  used to pick a template, never anywhere near the YANG path or the
+  value being set.
+- This is the same rule `remediation_templates.py`'s own docstring
+  already states for a different reason (an LLM shouldn't author a
+  structured config payload) — chaining #7 in as *context* doesn't
+  relax that rule. If anything, it's the reason this split needed
+  spelling out explicitly before writing `diagnose_and_propose.py`,
+  rather than just wiring `assistant.answer()` in wherever seemed
+  convenient.
+- If the diagnosis call itself fails (Ollama down, Chroma empty, a
+  bad response), that degrades to a plain "(rationale unavailable:
+  ...)" note in the rationale field — it does not block or alter the
+  proposal. A diagnosis outage is not a reason to withhold an already
+  confirmed, already-correct fix.
 
 ## Verified (2026-09-14, PROGRESS_LOG entries 31–33)
 
@@ -111,10 +167,15 @@ framing rather than RFC 6242 chunked framing.)
 
 ## Not yet done
 
-- **Chaining a real component #7 diagnosis into this**, rather than
-  running standalone against a bare interface name.
+- **`diagnose_and_propose.py` has not yet been run against the live
+  stack** — built and reviewed, same "prove it before calling it
+  done" pattern as everything else here. That run (confirm a real
+  fault, confirm the rationale field comes back grounded rather than
+  empty/hallucinated, confirm the proposal record is byte-for-byte
+  the same as `propose.py` would have produced) is the next real
+  step, not a formality.
 - **Scope beyond the one admin-state scenario** — deliberately not
   built until this one is proven end-to-end.
 - **Component #9 (security gate)** hasn't started — the natural
-  next step now that #8 produces real, verifiable proposals for it
-  to gate.
+  next step now that #8 produces real, verifiable, diagnosis-grounded
+  proposals for it to gate.
