@@ -33,6 +33,30 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-16 (44) — Full platform audit: components #1–#10 evaluated, README fixed, two phase ADRs written, backlog expanded
+
+**Focus:** with build order 1→10 functionally complete, a deliberate step back before component #11 — evaluate the whole platform rather than just the next component, per explicit request. Pulled the live repo directly (via the device bridge) rather than reasoning from what was cached in-session, same discipline as every technical claim in this project.
+
+**Most urgent finding, fixed immediately:** `README.md` — the actual front door for anyone evaluating this project — still said "Early development, nothing runnable yet" with all ten components live-verified. Rewrote it: status table, tech stack, and roadmap section now reflect reality and point at the new ADRs.
+
+**Real gaps found, all logged as new `BACKLOG.md` items (29–36) rather than fixed reflexively:**
+- **Kubernetes (item 4, re-flagged) and AWS/LocalStack (item 29, never even tracked before now)** — `SIGNAL_PATH.md`'s own plan puts both *before* the big lab and NetMind AI; the project jumped straight to the lab instead, and AWS was never given a backlog row at all until this audit.
+- **Zero automated tests (item 30)** — confirmed by a full repo search: no `test_*.py`, no `conftest.py`, anywhere. Every verification this project has ever done has been manual copy-paste from `TESTING.md`.
+- **`docs/setup/` covers 2 of 10 components (item 31)** — only network-lab and diagnosis-assistant have first-time setup docs.
+- **`docs/journal/` was completely empty (fixed this entry)** — the README's own stated promise ("each phase gets its own ADR-style write-up") was unfulfilled despite two full phases being done.
+- **Four host `.venv`s with heavily overlapping dependencies (item 32), and `security-gate` missing its own venv entirely (item 33)** — confirmed by reading every `requirements.txt` in the repo; `security-gate` was silently borrowing `remediation-proposal`'s venv all through entry 43's NETCONF debugging, only surfaced because `activate` itself errored.
+- **The Windows-mount + `sync-to-lab.sh` workflow (item 34)** — a real, recurring friction and bug source, including the exact sync-skip that briefly derailed entry 43's debugging tonight. Flagged for a real evaluation of making the native lab path the actual git working copy, not a reflexive "just switch it" — the DrvFs permission constraint that created this workflow in the first place is real (entry 3) and any change needs an answer for how Windows-side tooling reaches the native path.
+- **Groq/Gemini provider abstraction (item 35, reopens item 22)** — deliberately deferred in entry 23 pending "a concrete reason." One was given directly this session.
+
+**Built:** `docs/journal/2026-09-phase1-telemetry-data.md` (ADR-001, components #1–#4) and `docs/journal/2026-09-phase2-ai-layer-security-gate.md` (ADR-002, components #5–#10) — both synthesized from the real `PROGRESS_LOG.md` history (all 43 prior entries read, not summarized from memory), covering the real decisions, the real bugs found and how each was actually diagnosed (the `interface_name` label bug's three-day silent propagation, the Ollama cold-load timing investigation, the `ncclient`/`lxml` root-cause hunt), and what's verified vs. still deferred.
+
+**Decision on sequencing (via AskUserQuestion):** docs/README truth and the ADRs come first (this entry), before testing automation, venv/CLAB cleanup, or the Kubernetes/AWS gaps — reasoning being that this project's stated positioning is architecture/design judgment proven through write-ups, and the write-ups were the biggest gap between what's actually built and what's demonstrated. Component #11 stays deliberately held until the rest of this platform-quality pass is done, per `BACKLOG.md` item 11's updated status.
+
+**Not yet done:** items 29–36 themselves — this entry is the audit and the docs/README fix, not the fixes for testing automation, K8s/AWS, venv consolidation, or the sync workflow. Those are next, one at a time, per the chosen sequencing.
+
+**Next:** continue the platform-quality pass — testing automation and the docs/setup gaps are the natural next step after this entry's docs/README work, per the chosen priority order.
+**Open questions:** exact order within the "docs first" bucket (fill the 8 missing `docs/setup/0N-*.md` files next, or treat the two new ADRs as sufficient for now and move to testing automation) — not yet decided, worth a real choice next session rather than defaulting.
+
 ### 2026-09-16 (43) — Component #10 closed: NETCONF path debugged and live-verified, real bug found by reading ncclient's own source
 
 **Focus:** the one piece left open from entry 42 — the NETCONF path, genuinely new ground for this project (`ncclient` had never been used before).
