@@ -116,10 +116,21 @@ def _parse_rpc_body(rpc_xml: str):
     envelope -- ncclient builds and tracks its own envelope/message-id.
     remediation_templates.py's XML includes that outer <rpc> wrapper
     (needed for the by-hand raw-SSH test this project used before), so
-    it's stripped here rather than changing the proven template."""
-    from xml.etree import ElementTree as ET
+    it's stripped here rather than changing the proven template.
 
-    root = ET.fromstring(rpc_xml)
+    Live-verified bug fix (2026-09-16, PROGRESS_LOG entry 43): this
+    must parse with lxml.etree, not the stdlib xml.etree.ElementTree.
+    ncclient's Dispatch.request() checks `etree.iselement(rpc_command)`
+    using *its own* lxml-backed etree import -- a stdlib
+    ElementTree.Element fails that check silently, falls through to
+    being treated as a literal tag-name string, and produces exactly
+    the "Invalid tag name" error this fix resolves. Confirmed by
+    reading ncclient's actual installed source
+    (operations/retrieve.py's Dispatch.request, xml_.py's to_ele),
+    not assumed from documentation."""
+    from lxml import etree
+
+    root = etree.fromstring(rpc_xml.encode("utf-8"))
     # first (and only) child of <rpc> is the actual operation element
     return list(root)[0]
 

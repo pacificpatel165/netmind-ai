@@ -33,6 +33,26 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-16 (43) — Component #10 closed: NETCONF path debugged and live-verified, real bug found by reading ncclient's own source
+
+**Focus:** the one piece left open from entry 42 — the NETCONF path, genuinely new ground for this project (`ncclient` had never been used before).
+
+**First attempt failed with a real, reproducible bug:** `ValueError: Invalid tag name "<Element '{urn:ietf:params:xml:ns:netconf:base:1.0}edit-config' at 0x...>"`, deep inside `ncclient`'s own `manager.py`/`retrieve.py`. Root cause found by reading the actual installed source live on the lab host, not guessed at from documentation or training knowledge:
+1. `grep`'d ncclient's real package for `dispatch` — found it's registered as `operations.Dispatch` (not a plain `Manager` method), whose `request()` does `if etree.iselement(rpc_command): node = rpc_command else: node = new_ele(rpc_command)`.
+2. `etree` there is **lxml's** etree (ncclient's own import), not the stdlib `xml.etree.ElementTree` `executor.py`'s `_parse_rpc_body()` had used to strip the `<rpc>` envelope off `remediation_templates.py`'s XML. A stdlib `Element` fails `lxml.etree.iselement()` silently, falls to the `else` branch, and `new_ele()` tries to build a tag name string out of the whole Element object — exactly the garbled error seen.
+3. Confirmed the fix target by also reading `xml_.py`'s `to_ele()` (`etree.fromstring(x.encode('UTF-8'), ...)`, lxml-backed) before writing anything.
+
+**Fixed:** `_parse_rpc_body()` now parses with `lxml.etree` directly instead of the stdlib library, so the extracted child element is already the type `dispatch()` recognizes. One real process gotcha hit along the way, worth remembering: the first retest after this fix reproduced the *identical* traceback, line-for-line — not because the fix was wrong, but because `bash scripts/sync-to-lab.sh` hadn't actually been re-run, so the native lab path was still executing the old file. Caught by `grep`-checking the actual file on disk before re-theorizing about the code, rather than assuming the fix must be insufficient.
+
+**Live-verified after the real fix landed:** `python gate.py 172.100.100.11 ethernet-1/1 --protocol netconf` → approved → `EXECUTION SUCCEEDED via netconf. Confirmed live device state: 'enable'.` Checked independently, same discipline as every other claim in this project: `sr_cli` `info interface ethernet-1/1` showed the real transition from `disable` to `enable`, and `audit_log.jsonl`'s new execution entry correctly recorded `"protocol": "netconf", "success": true`.
+
+**Component #10 is now closed, both protocol paths live-verified:** the full #7→#8→#9→#10 pipeline has now been proven end-to-end twice, once per protocol, with independent device-state confirmation each time — not just a clean RPC reply trusted at face value.
+
+**Not yet done, carried forward, not new:** `security-gate/.venv/` doesn't actually exist on the lab host (noticed while debugging this — every gate.py run this session actually used `remediation-proposal/.venv`, which happens to have the same dependencies installed). Harmless so far since the two venvs' requirements overlap completely, but `security-gate` should get its own proper venv per this project's established one-venv-per-component pattern rather than silently depending on a sibling's. Audit log tamper-evidence and git-tracking (entry 40) both still open.
+
+**Next:** decide between building `security-gate`'s own venv properly (small housekeeping item) vs. moving on to component #11 (IaC/environment provisioning) or writing up the project's overall story now that the full build order 1→10 is functionally complete.
+**Open questions:** `audit_log.jsonl` git-tracking, still unresolved, carried forward unchanged.
+
 ### 2026-09-16 (42) — Component #10: `executor.py` built, JSON-RPC path live-verified end-to-end
 
 **Focus:** component #10, immediately after entry 41 settled the credential question it depended on. Design confirmed via AskUserQuestion before writing code, same discipline as #9's kickoff (entry 39): chain execution directly into `gate.py`'s approval flow (not a separate script scanning the audit log), and support both JSON-RPC and NETCONF via a `--protocol` flag (not pick one) — `remediation_templates.py` already builds both payload shapes on every proposal, so supporting both at execution time costs nothing upstream.

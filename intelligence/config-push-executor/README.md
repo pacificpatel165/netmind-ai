@@ -81,29 +81,41 @@ python gate.py 172.100.100.11 ethernet-1/1                    # json-rpc, defaul
 python gate.py 172.100.100.11 ethernet-1/1 --protocol netconf # not yet live-tested
 ```
 
-## Verified (2026-09-16, PROGRESS_LOG entry 42)
+## Verified (2026-09-16, PROGRESS_LOG entries 42–43)
 
-JSON-RPC path run end-to-end against a real fault: `ethernet-1/1`
-disabled, `gate.py` run and approved, `execute_json_rpc()` fired the
-real `set` payload, and the post-execution `get_admin_state()` re-check
-confirmed the device's real state matched the proposed value. This is
-this project's first live proof of the full #7→#8→#9→#10 chain working
-together, not just each component verified in isolation. The audit
-log's new two-event shape (`"event": "decision"` / `"event":
-"execution"`, correlated by `proposal_hash`) came out exactly as
-designed.
+Both protocol paths run end-to-end against real faults, each with
+independent device-state confirmation, not just a trusted RPC reply:
+
+- **JSON-RPC** (entry 42): `execute_json_rpc()` fired the real `set`
+  payload; `get_admin_state()` confirmed the device's real state
+  matched the proposed value.
+- **NETCONF** (entry 43): `execute_netconf()` fired the real
+  `edit-config`/`commit` pair via `ncclient`. A real bug was hit and
+  fixed on the way — `_parse_rpc_body()` originally used the stdlib
+  `xml.etree.ElementTree` to strip the `<rpc>` envelope, but
+  ncclient's `Dispatch.request()` checks `lxml.etree.iselement()`
+  internally, so a stdlib `Element` failed that check silently and got
+  mistaken for a literal tag-name string. Root cause found by reading
+  ncclient's actual installed source on the lab host (`grep`, then
+  `inspect.getsource()`), not guessed from documentation — fixed by
+  parsing with `lxml.etree` directly instead. `sr_cli` confirmed the
+  real `disable`→`enable` transition afterward.
+
+This is this project's first live proof of the full #7→#8→#9→#10 chain
+working end to end, twice, once per protocol — not just each
+component verified in isolation. The audit log's two-event shape
+(`"event": "decision"` / `"event": "execution"`, correlated by
+`proposal_hash`) came out exactly as designed both times.
 
 ## Not yet done
 
-- **Live test, netconf path — genuinely unverified.** `execute_netconf()`
-  uses `ncclient.manager.dispatch()` to send the exact RPC XML
-  `remediation_templates.py` already built, stripped of its outer
-  `<rpc>` envelope (ncclient builds and tracks its own). This exact
-  call shape has not been exercised against `srl1` yet — `ncclient`
-  itself hasn't been used anywhere in this project before today. Don't
-  treat this path as proven until it's actually been run and the
-  device's real state checked afterward, same discipline as every
-  other protocol claim in this project.
+- **`security-gate/` doesn't have its own venv.** Noticed while
+  debugging the NETCONF path: every `gate.py` run this session
+  actually activated `remediation-proposal/.venv`, not a
+  `security-gate/.venv` (which doesn't exist on the lab host).
+  Harmless so far since the two components' dependencies happen to
+  overlap completely, but breaks this project's established
+  one-venv-per-component pattern and should get its own venv properly.
 - **Audit log tamper-evidence** — unchanged from component #9, still
   not built (file permissions or a hash chain).
 - **The "already executed" marker problem** doesn't exist yet since
