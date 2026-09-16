@@ -1,27 +1,37 @@
-"""NetMind AI — component #9, security gate. First real build (2026-09-15).
+"""NetMind AI — component #9, security gate. Extended 2026-09-16 to chain
+into component #10.
 
 Design confirmed explicitly before writing this file (see PROGRESS_LOG.md
-for the session): stage 1 builds the two pieces that don't depend on
+for the session): stage 1 built the two pieces that don't depend on
 anything not yet real -- an explicit-approval gate and an append-only
 audit log -- against component #8's already-verified chained proposal
-(diagnose_and_propose.py). Least-privilege credential scoping is
-deliberately NOT built here: every component so far reuses the lab's one
-admin/NokiaSrl1! credential, and building a genuinely scoped SR Linux
-AAA role requires checking, live, whether this image's local-AAA system
-actually supports restricting a user to just the admin-state leaf --
-not guessed at and bolted on later. That's a separate, explicitly
-verified next step, not silently skipped.
+(diagnose_and_propose.py).
 
-What this component actually enforces, stage 1:
+**Credential scoping was investigated live, not deferred forever --
+see PROGRESS_LOG.md entry 41.** A non-superuser SR Linux local-AAA role
+was configured and tested; it gets zero YANG-path read/write access via
+NETCONF or JSON-RPC on this image regardless of services/operations
+granted, confirmed by an isolated superuser-only flip. Real,
+untried alternatives are on `docs/roadmap/BACKLOG.md` item 27 (sr_cli
+command-list scoping, TACACS+, a newer SR Linux release) -- not closed
+off, just not pursued yet. The decision: component #10 uses the full
+admin/NokiaSrl1! credential, same as every other component, and this
+gate's approval + audit trail carry the actual security boundary.
+
+What this component actually enforces:
 - **Explicit human approval, default-deny.** Nothing here auto-approves.
   Anything other than a literal "y"/"yes" at the prompt -- including a
   blank Enter -- is a rejection. There is no code path that applies a
   change without a human saying yes to it.
-- **An audit trail of the decision**, not of an executed change --
-  component #10 (the config-push executor) doesn't exist yet, so
-  nothing here ever actually applies anything to a device, approved or
-  not. The audit log records what was proposed, what was decided, and
-  by whom -- proof of the decision, not proof of an action.
+- **An audit trail of both the decision and, now that component #10
+  exists, the execution outcome** -- as two separate append-only
+  entries correlated by `proposal_hash`, not one mutated entry. A
+  decision entry is written the moment a human answers the prompt,
+  before execution is attempted; an execution entry is written after,
+  recording whether the RPC succeeded and whether the live device
+  actually confirmed the change (see `config-push-executor/executor.py`
+  -- it never trusts an RPC's "ok" reply alone, the same trap entry 33
+  found: a reply can say ok while device state doesn't move).
 
 What this component does NOT yet guarantee, stated plainly rather than
 implied:
@@ -32,13 +42,14 @@ implied:
   a text editor. Real tamper-evidence (append-only file permissions via
   `chattr +a`, or a hash chain linking each entry to the one before it)
   is a legitimate stage-2 item, not something to claim exists today.
-- **No credential scoping** (see above) -- this stage-1 gate decides
-  whether a human approved a change, not what permissions would be used
-  to apply one.
 
 Usage:
-    python gate.py <node-ip> <interface>
+    python gate.py <node-ip> <interface> [--protocol json-rpc|netconf]
     python gate.py 172.100.100.11 ethernet-1/1
+    python gate.py 172.100.100.11 ethernet-1/1 --protocol netconf
+Default protocol is json-rpc -- the one already live-verified end to
+end (entries 31, 41); netconf has NOT been live-tested through this
+executor yet, see config-push-executor/README.md.
 """
 
 import getpass
@@ -48,14 +59,16 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# diagnose_and_propose.py (component #8) lives in the sibling
-# remediation-proposal/ directory -- reused as a library, same
-# "prove a piece in isolation, then chain" pattern used throughout
-# this project rather than duplicating its logic here.
+# diagnose_and_propose.py (component #8) and executor.py (component #10)
+# live in sibling directories -- reused as libraries, same "prove a
+# piece in isolation, then chain" pattern used throughout this project
+# rather than duplicating their logic here.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "remediation-proposal"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "config-push-executor"))
 
 from diagnose_and_propose import diagnose_and_propose
 from state_client import DeviceQueryError
+from executor import ExecutionError, execute
 
 AUDIT_LOG_PATH = Path(__file__).resolve().parent / "audit_log.jsonl"
 
@@ -116,27 +129,57 @@ def display_proposal(record: dict) -> None:
         print()
 
 
-def append_audit_entry(record: dict, decision: str, decided_by: str) -> None:
-    """Appends one JSON line. Opens the file in "a" mode only -- see
-    this module's docstring for exactly what that does and doesn't
-    guarantee."""
-    entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+def _base_audit_fields(record: dict) -> dict:
+    """Fields shared by both a decision entry and an execution entry --
+    factored out so the two entries are correlated by more than just
+    proposal_hash (same interface/node/values), without duplicating the
+    field list twice."""
+    return {
         "interface": record["interface"],
         "node_ip": record.get("node_ip"),
         "yang_path": record["yang_path"],
         "current_value": record["current_value"],
         "proposed_value": record["proposed_value"],
+        "proposal_hash": proposal_hash(record),
+    }
+
+
+def append_decision_entry(record: dict, decision: str, decided_by: str) -> None:
+    """Appends one JSON line recording the human decision. Opens the
+    file in "a" mode only -- see this module's docstring for exactly
+    what that does and doesn't guarantee."""
+    entry = {
+        "event": "decision",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        **_base_audit_fields(record),
         "decision": decision,
         "decided_by": decided_by,
-        "proposal_hash": proposal_hash(record),
         "rationale_included": "rationale" in record,
     }
     with open(AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
 
-def gate(node_ip: str, interface: str) -> None:
+def append_execution_entry(record: dict, protocol: str, success: bool, detail: str) -> None:
+    """Appends one JSON line recording what happened when an approved
+    change was actually applied -- a second, separate entry rather than
+    mutating the decision entry above, preserving append-only. Written
+    whether execution succeeded or failed: a failed execution is exactly
+    the kind of event this audit trail exists to capture, not something
+    to leave unrecorded."""
+    entry = {
+        "event": "execution",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        **_base_audit_fields(record),
+        "protocol": protocol,
+        "success": success,
+        "detail": detail,
+    }
+    with open(AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def gate(node_ip: str, interface: str, protocol: str = "json-rpc") -> None:
     try:
         record = diagnose_and_propose(node_ip, interface)
     except DeviceQueryError as exc:
@@ -155,23 +198,46 @@ def gate(node_ip: str, interface: str) -> None:
     decision = "approved" if approved else "rejected"
     decided_by = getpass.getuser()
 
-    append_audit_entry(record, decision, decided_by)
+    append_decision_entry(record, decision, decided_by)
 
-    if approved:
-        print(
-            f"\nRecorded: APPROVED by {decided_by}. Nothing was applied --"
-            " component #10 (config-push executor) doesn't exist yet."
-            " This decision is recorded for when it does."
-        )
-    else:
+    if not approved:
         print(f"\nRecorded: REJECTED by {decided_by}. No change was proposed for execution.")
+        return
+
+    print(f"\nRecorded: APPROVED by {decided_by}. Applying via {protocol}...")
+    try:
+        result = execute(record, node_ip, protocol)
+    except ExecutionError as exc:
+        append_execution_entry(record, protocol, success=False, detail=str(exc))
+        print(f"\nEXECUTION FAILED: {exc}")
+        print("Recorded in audit log as a failed execution -- approval alone never means it took effect.")
+        sys.exit(1)
+
+    append_execution_entry(
+        record, protocol, success=True,
+        detail=f"confirmed device state: {result['confirmed_value']}",
+    )
+    print(f"\nEXECUTION SUCCEEDED via {protocol}. Confirmed live device state: {result['confirmed_value']!r}.")
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
-        print("usage: python gate.py <node-ip> <interface>")
+    args = sys.argv[1:]
+    protocol = "json-rpc"
+    if "--protocol" in args:
+        idx = args.index("--protocol")
+        try:
+            protocol = args[idx + 1]
+        except IndexError:
+            print("usage: python gate.py <node-ip> <interface> [--protocol json-rpc|netconf]")
+            sys.exit(1)
+        del args[idx:idx + 2]
+    if protocol not in ("json-rpc", "netconf"):
+        print(f"unknown protocol: {protocol!r} (expected 'json-rpc' or 'netconf')")
         sys.exit(1)
-    gate(sys.argv[1], sys.argv[2])
+    if len(args) != 2:
+        print("usage: python gate.py <node-ip> <interface> [--protocol json-rpc|netconf]")
+        sys.exit(1)
+    gate(args[0], args[1], protocol)
 
 
 if __name__ == "__main__":

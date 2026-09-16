@@ -168,7 +168,8 @@ read would. Not fixed yet — flagged here so it isn't lost.
   Real gap, not yet fixed.
 - **Audit log tamper-evidence** beyond "the code only appends" —
   file permissions or a hash chain, not built yet.
-- **Component #10 (config-push executor)** doesn't exist — nothing
-  approved through this gate can actually be applied to a device
-  yet, by design. Will use the full `admin` credential, per the
-  decision above.
+- **Component #10 (config-push executor) now exists** (2026-09-16,
+  see `../config-push-executor/README.md`), chained directly into
+  `gate.py` — an approval now actually attempts execution, using the
+  full `admin` credential per the decision above. Not yet live-tested
+  either protocol path; that's the immediate next step.

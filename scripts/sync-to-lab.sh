@@ -40,7 +40,9 @@ mkdir -p "$REPO_NATIVE"
 # would silently wipe a real audit trail rather than just cost a
 # rebuild -- see that component's README.md for why whether this file
 # should even be committed to git is still an open question.
-rsync -a --delete --exclude='.git' --exclude='lab/topologies/clab-netmind-2node/' --exclude='intelligence/diagnosis-assistant/.venv/' --exclude='intelligence/remediation-proposal/.venv/' --exclude='intelligence/security-gate/.venv/' --exclude='intelligence/security-gate/audit_log.jsonl' "$REPO_WIN/" "$REPO_NATIVE/"
+# --exclude on intelligence/config-push-executor/.venv/ is the same
+# class of fix again, component #10's own venv.
+rsync -a --delete --exclude='.git' --exclude='lab/topologies/clab-netmind-2node/' --exclude='intelligence/diagnosis-assistant/.venv/' --exclude='intelligence/remediation-proposal/.venv/' --exclude='intelligence/security-gate/.venv/' --exclude='intelligence/security-gate/audit_log.jsonl' --exclude='intelligence/config-push-executor/.venv/' "$REPO_WIN/" "$REPO_NATIVE/"
 
 echo "Synced $REPO_WIN -> $REPO_NATIVE"
 echo "Deploy from: $REPO_NATIVE/lab/topologies/"

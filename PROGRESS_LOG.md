@@ -33,6 +33,23 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-16 (42) — Component #10: `executor.py` built, JSON-RPC path live-verified end-to-end
+
+**Focus:** component #10, immediately after entry 41 settled the credential question it depended on. Design confirmed via AskUserQuestion before writing code, same discipline as #9's kickoff (entry 39): chain execution directly into `gate.py`'s approval flow (not a separate script scanning the audit log), and support both JSON-RPC and NETCONF via a `--protocol` flag (not pick one) — `remediation_templates.py` already builds both payload shapes on every proposal, so supporting both at execution time costs nothing upstream.
+
+**Built:** `intelligence/config-push-executor/executor.py` — `execute_json_rpc()` fires the exact `json_rpc_set_payload` already built and shown to the human approver; `execute_netconf()` sends the exact `netconf_edit_config_xml`/`netconf_commit_xml` RPC strings via `ncclient.manager.dispatch()` (the outer `<rpc>` envelope stripped, since ncclient builds and tracks its own — `_parse_rpc_body()`). `execute()` wraps either path and, critically, never trusts the RPC's own "ok"-looking reply: it always re-reads the device's real state via `state_client.get_admin_state()` afterward and raises `ExecutionError` if the confirmed value doesn't match what was proposed — a direct response to entry 33's real finding that `edit-config` can return `<ok/>` while only staging into candidate.
+
+**`gate.py` extended, not replaced:** an approval now calls `execute()` immediately, using the full `admin` credential per entry 41's decision. The audit log gained a second entry type (`"event": "execution"`, correlated to the decision entry by `proposal_hash`) rather than mutating the original decision entry, keeping the append-only design intact — a failed execution is recorded too, not just successes. **Schema note, worth remembering:** the two real audit entries from entry 40's test predate the `"event"` field and won't have it.
+
+**Genuinely unverified, stated plainly rather than assumed working:** `ncclient` has not been used anywhere in this project before this build — the NETCONF path in `executor.py` has never been run live. Every prior NETCONF RPC in this project (entry 33) was applied by hand over a raw `ssh -p 830 -s admin@<node-ip> netconf` session, not through a real client library. `execute_netconf()`'s exact call shape (stripping the `<rpc>` envelope before `dispatch()`) is a reasoned design choice, not a proven one.
+
+**JSON-RPC path live-tested, same session, real end-to-end run:** `ethernet-1/1` disabled via `sr_cli`, `gate.py` run, approved with `y`, `execute_json_rpc()` fired the real `set` payload, and the post-execution `get_admin_state()` re-check confirmed `'enable'` — printed as `EXECUTION SUCCEEDED via json-rpc. Confirmed live device state: 'enable'.` **This is component #10's first real proof of the whole chain working, not just each piece in isolation**: a fault existed, #7's diagnosis ran, #8's proposal built both payloads, #9's gate required and got explicit approval, and #10 actually applied the change to the device — the full 7→8→9→10 pipeline, live, for the first time in this project. `audit_log.jsonl`'s new two-event shape confirmed exactly as designed: a `"event": "decision"` entry and a `"event": "execution"` entry, same `proposal_hash` on both, `"success": true`, `"detail": "confirmed device state: enable"`.
+
+**Not yet done:** the NETCONF path — `--protocol netconf` has not been run. `ncclient` is still unexercised in this project.
+
+**Next:** live-test `--protocol netconf`, the one remaining unverified piece of component #10.
+**Open questions:** none new; `audit_log.jsonl` git-tracking (entry 40) still open.
+
 ### 2026-09-16 (41) — Credential scoping: real ceiling found and confirmed live, boundary shifted deliberately
 
 **Focus:** the one piece of component #9's original scope still open — least-privilege credential scoping — investigated live against `srl1`'s real AAA system rather than designed from general Nokia documentation.
