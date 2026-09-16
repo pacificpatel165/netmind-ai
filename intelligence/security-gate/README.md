@@ -106,13 +106,69 @@ differently component #7 phrased the rationale each run. An earlier
 version of this component's own testing instructions wrongly expected
 the hashes to differ for that reason — corrected in entry 40.
 
+## Credential scoping — investigated live, real ceiling found (2026-09-16, PROGRESS_LOG entry 41)
+
+Not deferred anymore — actually tested against `srl1`'s real local AAA
+system, and the answer turned out to be a hard platform limit rather
+than a design choice. General Nokia documentation implied a
+`role`/`rule`/`path`/`action` model down to individual YANG leaves;
+live exploration of this device's actual `system aaa authorization
+role <name>` command tree found no such structure (only `cli`,
+`netconf`, `services`, `superuser`, `tacacs` exist at the role level
+on `ghcr.io/nokia/srlinux:latest`, 26.7.2).
+
+A `netmind-remediation` role and user were configured (`superuser
+false`, `services [json-rpc netconf]`, restricted `netconf
+allowed-operations`) and live-tested via both JSON-RPC read and write.
+Both failed — a write was denied outright, a read came back silently
+empty rather than erroring. Isolated by testing one variable at a
+time (ruling out `allow-command-list` defaults and a missing `cli`
+service first) down to a single clean before/after/before test:
+flipping only `superuser` to `true` made both the read and write work
+immediately; flipping it back to `false` broke both again, with
+nothing else changed.
+
+**The real, live-proven ceiling:** on this SR Linux image, a
+non-superuser local AAA role gets *no* YANG-path data access at all
+via NETCONF or JSON-RPC — not restricted access, none. `services` and
+`netconf allowed-operations` only gate which RPCs a session may
+attempt; whether an RPC can touch any path data underneath is
+superuser-or-nothing. The one place real least-privilege restriction
+does work on this device is `cli allow-command-list`/
+`deny-command-list` — but that only governs interactive `sr_cli`
+sessions, not the JSON-RPC/NETCONF path this project's components are
+built on.
+
+**Decision:** stop chasing credential scoping on this protocol path.
+Component #10 uses the same full `admin`/`NokiaSrl1!` credential every
+other component has used. The real security boundary for this project
+is component #9's human-approval gate and audit log (both already
+built and live-verified — see "Verified" above), not credential
+scoping. Switching the write path to `sr_cli` to get real scoping was
+considered and explicitly declined, since it would mean reworking
+`state_client.py`/`remediation_templates.py`'s protocol choice for the
+whole project rather than adding a component.
+
+The `netmind-remediation` role/user are left configured on the device
+as a documented record of what was tried, not torn down — inert for
+this project's purposes now.
+
+A real, separate gap surfaced during this investigation, worth fixing
+regardless: `state_client.py`'s `DeviceQueryError` only checks for an
+`"error"` key or a malformed result-list shape — it never validates
+that a returned value looks like real device state. The scoped
+credential's authorization-driven empty read (`{}` instead of
+`"disable"`) sailed through that check exactly like a legitimate
+read would. Not fixed yet — flagged here so it isn't lost.
+
 ## Not yet done
 
-- **Least-privilege credential scoping** — deliberately deferred, see
-  above. Needs live verification of what SR Linux's local-AAA role
-  system actually supports before it's designed, not guessed at.
+- **`state_client.py`'s `DeviceQueryError` doesn't catch a silently
+  empty/malformed value** — see the credential-scoping section above.
+  Real gap, not yet fixed.
 - **Audit log tamper-evidence** beyond "the code only appends" —
   file permissions or a hash chain, not built yet.
 - **Component #10 (config-push executor)** doesn't exist — nothing
   approved through this gate can actually be applied to a device
-  yet, by design.
+  yet, by design. Will use the full `admin` credential, per the
+  decision above.

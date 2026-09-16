@@ -33,6 +33,35 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-16 (41) — Credential scoping: real ceiling found and confirmed live, boundary shifted deliberately
+
+**Focus:** the one piece of component #9's original scope still open — least-privilege credential scoping — investigated live against `srl1`'s real AAA system rather than designed from general Nokia documentation.
+
+**What the general documentation implied, and why it didn't hold up:** earlier research (WebSearch/WebFetch against Nokia's docs) suggested SR Linix local AAA supported `role`/`rule`/`path`/`action` granularity down to individual YANG leaves. Live exploration of the actual device's `system aaa authorization role <name>` command tree via `sr_cli` tab-completion found no such structure — only `cli` (`allow-command-list`/`deny-command-list`), `netconf` (`allowed-operations`), `services`, `superuser`, and `tacacs` exist at the role level on this image (`ghcr.io/nokia/srlinux:latest`, 26.7.2). No `rule`/`path`/`action` node exists to explore, confirming the general docs describe a model this device/version doesn't expose locally — a real finding, not an assumption.
+
+**Configured and live-tested a `netmind-remediation` role and user, one live change at a time:**
+- `services [ json-rpc netconf ]`, `superuser false`, `netconf allowed-operations [ get get-config edit-config commit validate discard-changes ]` — deliberately excluding `delete-config`, `copy-config`, `kill-session`, `lock`/`unlock`, and others not needed by this project's remediation flow.
+- Local user `netmind-remediation` bound via `role [ netmind-remediation ]`; password committed as a yescrypt hash (`$y$j9T$...`), confirming cleartext-in is accepted and hashed by the device, not guessed at.
+
+**Test 1 (read), as configured:** `propose.py` with `SRL_USER`/`SRL_PASSWORD` overridden to the new credential returned `"current_value": {}` instead of the real string `"disable"` that `admin` got for the identical path and device state, with no error raised anywhere in the chain. Confirmed via raw `curl` (not through `state_client.py`'s parsing) that the device itself returned `{"result": [{}], ...}` — the JSON-RPC `get` RPC executed without error, but the actual leaf data came back empty. **A real gap, worth hardening later regardless of the scoping outcome:** `state_client.py`'s `DeviceQueryError` only checks for an `"error"` key or a malformed result-list shape — it never validates that the returned value looks like real device state, so an authorization-driven empty response sailed through the exact same code path as a legitimate read. A scoped credential silently returning nothing is a worse failure mode for something feeding a remediation decision than an outright rejection would be.
+
+**Test 2 (write), as configured:** the exact `json_rpc_set_payload` shape from `remediation_templates.py`, fired via raw `curl` as `netmind-remediation`, was denied: `{"error": {"code": -1, "message": "No authorization to execute command: 'set / interface ethernet-1/1 admin-state enable'"}}`.
+
+**Two wrong hypotheses tried and disproven live, worth recording so the reasoning isn't lost:**
+1. *Empty `allow-command-list` defaults to deny* — disproven by the device's own help text: `allow-command-list [` prints "Empty allow-command-list means anything that is not in deny-command-list is allowed. If both lists are empty then everything is allowed." Both were empty; this wasn't the gate.
+2. *JSON-RPC `set` requires the `cli` service* (the denial message's CLI-command-tree phrasing suggested this) — added `cli` to `services [ json-rpc netconf cli ]`, committed, confirmed via `info`, re-ran both tests: identical results, no change. Disproven.
+
+**The real answer, confirmed by a clean isolated test:** flipped only `superuser` to `true` on the same role, everything else unchanged, re-ran both curls — write succeeded, read returned the real value `"enable"`. Flipped `superuser` back to `false`, re-ran both again — write denied, read empty, exactly as before. Clean before/after/before, not a one-off. **Conclusion, live-proven, not inferred from a docstring alone:** on this SR Linux image, non-superuser local AAA roles get no YANG-path data access at all via NETCONF or JSON-RPC — not restricted access, none. `services` and `netconf allowed-operations` only gate which RPCs a session may attempt; whether the RPC can touch any path data underneath is superuser-or-nothing. The device's own `superuser` help text said almost exactly this ("only evaluated for service authorization") at the very start of this investigation — it just hadn't been taken as literally true until tested.
+
+**Decision (via AskUserQuestion, user chose "Accept the ceiling, shift the boundary"):** credential scoping via NETCONF/JSON-RPC is not achievable on this platform — not a gap to keep chasing, a verified real limit. Component #10 will use the same full `admin`/`NokiaSrl1!` credential every component has used so far. The actual security boundary for this project is component #9's human-approval gate and audit log — already built and live-verified (entry 40) — not credential scoping. `cli allow-command-list`/`deny-command-list` *is* real, working least-privilege restriction on this device, but only for `sr_cli` sessions; adopting it would mean rewriting the write path off JSON-RPC/NETCONF entirely, a real architecture change that was considered and explicitly declined in favor of unblocking component #10 now.
+
+**Left as originally configured, not torn down:** the `netmind-remediation` role and user still exist on the device (`superuser false`, restricted `services`/`allowed-operations`) — inert for this project's purposes now, but harmless, and left as a documented record of what was tried rather than deleted.
+
+**Not yet done:** update `intelligence/security-gate/README.md`'s "Not yet done" section to close out credential scoping with this finding instead of leaving it open; start component #10 (config-push executor) against the full `admin` credential.
+
+**Next:** component #10 — the config-push executor.
+**Open questions:** whether `audit_log.jsonl` should be committed to git — still unresolved, carried forward unchanged.
+
 ### 2026-09-15 (40) — Component #9 live-verified: default-deny, approval, and audit trail all proven
 
 **Focus:** the live test owed from entry 39 — a real rejection (via blank Enter, the actual proof default-deny isn't just a docstring claim) and a real approval, both checked against the audit log and, for the approval, against the live device.
