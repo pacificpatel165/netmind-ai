@@ -33,6 +33,30 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-17 (45) — Automated test suite built: 40 tests, one real bug fixed, one real bug caught in the tests themselves
+
+**Focus:** `BACKLOG.md` item 30, chosen (via AskUserQuestion) as the next platform-quality item over finishing the remaining `docs/setup/` files. Scope deliberately drawn: only the parts of each component that don't require live device state — payload shapes, hashing/audit logic, RPC-body parsing, template routing — not a replacement for `TESTING.md`'s live-device verification, which stays exactly as it is.
+
+**Built and, critically, actually run before being called done — every test file was executed in a real venv in this session, not just written and assumed correct:**
+- `intelligence/diagnosis-assistant/test_router.py` (9 tests) — `match_template()`/`extract_interface()`'s deterministic keyword routing, including the exact traffic-rate keyword set entry 28 added specifically to avoid repeating the LLM-fallback failure from that entry.
+- `intelligence/remediation-proposal/test_remediation_templates.py` (8 tests) — `interface_admin_up()`'s JSON-RPC and NETCONF payload shapes pinned against the exact values proven live by hand in entries 31/32/33, so a future silent edit (a typo'd field, a dropped commit RPC) fails immediately instead of only being caught if someone happens to re-run that exact scenario.
+- `intelligence/remediation-proposal/test_state_client.py` (5 tests) — `get_admin_state()`'s error handling, using the real mocked payload shapes seen live during entry 41's credential-scoping investigation.
+- `intelligence/security-gate/test_gate.py` (10 tests) — `proposal_hash()`'s rationale-exclusion behavior (entry 40's real finding), the audit log's two-event schema and decision/execution correlation, and default-deny approval logic.
+- `intelligence/config-push-executor/test_executor.py` (8 tests) — `_parse_rpc_body()`, `execute()`'s protocol dispatch and always-reverify-device-state behavior.
+
+**Real bug fixed as part of this work, closing `BACKLOG.md` item 28:** `state_client.py`'s `get_admin_state()` now validates the returned value is an actual admin-state string (`enable`/`disable`), not just that the RPC didn't error — closing the silent-empty-read gap found live in entry 41. Pinned with `test_get_admin_state_raises_on_silently_empty_authorized_read`, using the exact real payload (`{"result": [{}]}`) that exposed the original gap.
+
+**A real bug caught in the tests themselves, not just in the code being tested:** `test_gate_rejects_on_anything_other_than_y_or_yes` initially included `"Y "` (trailing space) as an expected-rejected input — wrong, since `gate.py`'s own `.strip().lower()` correctly treats that as approval. Caught by actually running the test (it failed, for the right reason) rather than by re-reading the test more carefully — the same class of lesson as entry 40's `proposal_hash` test-instruction mistake, and worth restating: a test can be wrong too, and running it is what catches that.
+
+**A regression test verified to actually regress, not just pass trivially:** `test_executor.py`'s `_parse_rpc_body()` tests were deliberately run a second time against a sabotaged copy of `executor.py` with the real pre-fix bug (stdlib `ElementTree` instead of `lxml`) reintroduced — 4 of 8 tests failed with the exact same class of error entry 43 hit live, confirming these tests genuinely catch that regression rather than being tautological. Fix restored, all 8 passed again immediately after.
+
+**Built:** `scripts/run-all-tests.sh` — runs every covered component's suite in one command, skipping (not failing) any component whose `.venv` doesn't exist yet and printing the exact setup command. `docs/testing/TESTING.md` got a new top section pointing to this, explicit about the boundary between what's automated now and what still needs a human and the live lab.
+
+**Not yet done:** components #5 (anomaly-detection) and #6 (retrieval-index) have no automated tests — both are containerized rather than host-venv Python, so this session's pattern (pytest inside an existing component venv) doesn't transfer directly and needs its own decision, not a rushed copy-paste. `docs/setup/`'s remaining 8 missing files are still open (the alternative choice at this session's start).
+
+**Next:** decide #5/#6's testing approach, or move to the remaining `docs/setup/` gaps, or pick up the venv-consolidation/native-CLAB items — open choice for next session.
+**Open questions:** none new this entry.
+
 ### 2026-09-16 (44) — Full platform audit: components #1–#10 evaluated, README fixed, two phase ADRs written, backlog expanded
 
 **Focus:** with build order 1→10 functionally complete, a deliberate step back before component #11 — evaluate the whole platform rather than just the next component, per explicit request. Pulled the live repo directly (via the device bridge) rather than reasoning from what was cached in-session, same discipline as every technical claim in this project.

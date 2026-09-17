@@ -22,6 +22,12 @@ NODE_USER = os.environ.get("SRL_USER", "admin")
 NODE_PASSWORD = os.environ.get("SRL_PASSWORD", "NokiaSrl1!")
 VERIFY_TLS = False  # self-signed clab-profile cert, same as every prior check
 
+# Real, live-confirmed values for interface admin-state (SR Linux YANG
+# enum). Used only to validate a read actually returned device state,
+# not to restrict what a *write* could ever propose to -- that's
+# remediation_templates.py's job, deliberately kept separate.
+KNOWN_ADMIN_STATE_VALUES = {"enable", "disable"}
+
 
 class DeviceQueryError(Exception):
     """Raised when a device's JSON-RPC endpoint returns something other
@@ -36,7 +42,19 @@ def get_admin_state(node_ip: str, interface: str, timeout: int = 10) -> str:
     """Returns the interface's current admin-state ("enable"/"disable"),
     read fresh from the device -- never cached, never assumed, since a
     remediation proposal is only as trustworthy as the state it was
-    built from."""
+    built from.
+
+    Validates the returned value looks like real device state, not
+    just that the RPC didn't error (fixed 2026-09-17, BACKLOG.md item
+    28, found 2026-09-16 during the credential-scoping investigation:
+    a non-superuser credential's read came back as {"result": [{}]},
+    a *successful* RPC response with no actual leaf data in it -- no
+    "error" key, correctly-shaped single-item list, and the previous
+    version of this function returned {} as if it were a legitimate
+    admin-state value. That's a real gap for anything feeding a
+    remediation decision: a silently-empty authorized read is worse
+    than an outright rejection, since nothing distinguished it from a
+    real answer downstream.)"""
     path = f"/interface[name={interface}]/admin-state"
     resp = requests.post(
         f"https://{node_ip}/jsonrpc",
@@ -57,4 +75,12 @@ def get_admin_state(node_ip: str, interface: str, timeout: int = 10) -> str:
     result = payload.get("result")
     if not isinstance(result, list) or len(result) != 1:
         raise DeviceQueryError(f"{node_ip} returned an unexpected shape for {path}: {payload}")
-    return result[0]
+    value = result[0]
+    if not isinstance(value, str) or value not in KNOWN_ADMIN_STATE_VALUES:
+        raise DeviceQueryError(
+            f"{node_ip} returned a successful-looking but empty/invalid value for {path}: "
+            f"{value!r} (expected one of {sorted(KNOWN_ADMIN_STATE_VALUES)}) -- this usually "
+            "means the RPC succeeded but the caller's credential isn't authorized to see the "
+            "actual leaf data (see PROGRESS_LOG.md entry 41), not that the interface has no state."
+        )
+    return value

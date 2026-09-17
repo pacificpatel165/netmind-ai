@@ -6,3 +6,4 @@ requests==2.32.3
 # diagnosis-assistant/requirements.txt -- see retrieval-index/README.md's
 # "known gotcha" for why the client/server pin has to stay in lockstep.
 chromadb==0.5.23
+pytest==8.3.3

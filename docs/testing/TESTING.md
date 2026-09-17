@@ -15,6 +15,45 @@ If a command here ever disagrees with a component's own README, the
 README is more likely current; update this file to match rather than
 the other way around.
 
+**Known gap (`docs/roadmap/BACKLOG.md` item 31):** this file's
+per-component sections below currently only cover #1–8 — components #9
+(security gate) and #10 (config-push executor) aren't documented here
+yet, even though both are built and live-verified (see
+`intelligence/security-gate/README.md`, `intelligence/config-push-executor/README.md`,
+and `docs/journal/2026-09-phase2-ai-layer-security-gate.md` in the
+meantime).
+
+## Automated tests (BACKLOG.md item 30, added 2026-09-17)
+
+Everything below this point is **manual, live-device verification** —
+correct and necessary for anything that requires watching real state
+change on the actual lab, but it needs the lab up and a human typing
+commands. A real subset of what this project verifies doesn't need
+either: payload shapes matching what was proven live by hand, the
+security gate's hashing/audit/default-deny logic, the config-push
+executor's RPC-body parsing (this is a real regression test — it
+directly catches the ncclient/lxml bug found and fixed live 2026-09-16,
+PROGRESS_LOG entry 43), and the diagnosis assistant's deterministic
+PromQL template routing.
+
+Run every component's automated suite in one shot:
+
+```bash
+bash scripts/run-all-tests.sh
+```
+
+Needs each covered component's `.venv` already created with its
+`requirements.txt` installed (`pytest` is now listed there) — the
+script skips (doesn't fail) any component whose venv doesn't exist yet
+and tells you the exact commands to create it.
+
+Covered: `diagnosis-assistant` (`test_router.py`), `remediation-proposal`
+(`test_remediation_templates.py`, `test_state_client.py`),
+`security-gate` (`test_gate.py`), `config-push-executor`
+(`test_executor.py`). Not covered by design, and correctly so: anything
+requiring a real device connection, a real Ollama call, or real
+Prometheus/Chroma data — that's what the rest of this file is for.
+
 ---
 
 ## 0. Environment prerequisites (all components)
