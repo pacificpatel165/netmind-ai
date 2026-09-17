@@ -42,10 +42,26 @@ Run every component's automated suite in one shot:
 bash scripts/run-all-tests.sh
 ```
 
-Needs each covered component's `.venv` already created with its
-`requirements.txt` installed (`pytest` is now listed there) — the
-script skips (doesn't fail) any component whose venv doesn't exist yet
-and tells you the exact commands to create it.
+Since 2026-09-17 (`BACKLOG.md` item 32), every component shares **one**
+venv at `intelligence/.venv` instead of six separate per-component
+ones — created once:
+
+```bash
+cd intelligence
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+deactivate
+```
+
+`intelligence/requirements.txt` is the union of every pin the six
+components already used individually (same versions, nothing changed) —
+each component's own `requirements.txt` is untouched and still what its
+Docker build (anomaly-detection, retrieval-index) or documentation
+reads. If you still have the old per-component `.venv` dirs from before this
+change, they're safe to delete — find them with `find intelligence
+-maxdepth 2 -name .venv` and `rm -rf` each one except
+`intelligence/.venv` itself — nothing reads them anymore.
 
 Covered: `diagnosis-assistant` (`test_router.py`), `remediation-proposal`
 (`test_remediation_templates.py`, `test_state_client.py`),

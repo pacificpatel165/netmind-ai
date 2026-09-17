@@ -34,40 +34,43 @@
 # the caller's cwd or which copy of the repo invoked it:
 #   bash scripts/run-all-tests.sh
 #
-# Each component needs its own venv with its requirements.txt installed
-# first (pytest is now listed in every component's requirements.txt
-# that has tests) -- this script does NOT create venvs for you, since
-# that's a real, occasionally slow step (chromadb especially) better
-# run deliberately once per environment, not silently on every test run.
+# Since 2026-09-17 (item 32), every component shares ONE venv --
+# intelligence/.venv -- instead of six separate per-component ones.
+# That consolidation is why this script no longer skips components: a
+# single missing venv is a hard error now, not a per-component skip,
+# because "missing" can no longer mean "just hasn't been set up for
+# THIS component yet" (item 33's original failure mode) -- there's only
+# one venv to have or not have. Create it once:
+#   cd intelligence && python3 -m venv .venv && source .venv/bin/activate \
+#     && pip install -r requirements.txt && deactivate
 
 set -uo pipefail
 
 REPO_ROOT="$HOME/netmind-lab"
+SHARED_VENV="$REPO_ROOT/intelligence/.venv"
 FAILED=0
-RAN_ANY=0
 
 if [ ! -d "$REPO_ROOT" ]; then
   echo "ERROR: $REPO_ROOT doesn't exist -- run scripts/sync-to-lab.sh first (see its header comment for why venvs only exist here, not on the Windows-mounted copy)."
   exit 1
 fi
 
+if [ ! -d "$SHARED_VENV" ]; then
+  echo "ERROR: shared venv missing at $SHARED_VENV -- run:"
+  echo "  cd intelligence && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate"
+  exit 1
+fi
+
+# shellcheck disable=SC1091
+source "$SHARED_VENV/bin/activate"
+
 run_component_tests() {
   local name="$1"
   local dir="$REPO_ROOT/intelligence/$name"
-  local venv="$dir/.venv"
 
   echo "== $name =="
-  if [ ! -d "$venv" ]; then
-    echo "SKIP -- no .venv at $venv (run: cd intelligence/$name && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt)"
-    echo
-    return
-  fi
-  RAN_ANY=1
-  # shellcheck disable=SC1091
-  source "$venv/bin/activate"
   ( cd "$dir" && python -m pytest test_*.py -v )
   local status=$?
-  deactivate
   if [ $status -ne 0 ]; then
     FAILED=1
   fi
@@ -81,11 +84,10 @@ run_component_tests "config-push-executor"
 run_component_tests "anomaly-detection"
 run_component_tests "retrieval-index"
 
+deactivate
+
 echo "=================================================="
-if [ "$RAN_ANY" -eq 0 ]; then
-  echo "NOTHING RAN -- every component was skipped (no .venv found). This is NOT a pass; set up at least one venv above and re-run."
-  exit 1
-elif [ $FAILED -eq 0 ]; then
+if [ $FAILED -eq 0 ]; then
   echo "All automated tests passed."
 else
   echo "One or more component test suites FAILED -- see output above."

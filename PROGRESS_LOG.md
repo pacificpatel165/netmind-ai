@@ -33,6 +33,30 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-17 (49) — Venv consolidation (item 32): six host venvs down to one, verified against the real 56-test suite
+
+**Focus:** third item off the working-order checklist, and the one item 33 explicitly flagged as possibly subsumed by it. Asked directly which of `BACKLOG.md` item 32's two named options to take — "one shared venv" chosen over "installable local package" as the right fit for a project this size (simpler, fewer moving parts, and the package-abstraction approach would be solving a problem this codebase doesn't have yet).
+
+**Built:** `intelligence/requirements.txt` — the union of every pin the six components already used individually (`requests==2.32.3`, `chromadb==0.5.23`, `ncclient==0.6.15`, `prometheus-client==0.20.0`, `pytest==8.3.3`), nothing version-bumped as part of this change. Each component's own `requirements.txt` deliberately left untouched — still what `anomaly-detection`/`retrieval-index`'s Docker builds actually read (their production runtime is unaffected by this, which is entirely a host-venv/testing convenience), and still accurate documentation of what each component specifically imports.
+
+**`scripts/run-all-tests.sh` rewritten** to activate `intelligence/.venv` once at the top rather than sourcing (or failing to find) a separate venv per component. This also changes what a missing venv means: previously a missing per-component venv was a per-component *skip* (the exact mechanism that let entry 46's false positive happen); now there's only one venv to have, so it's a hard error with setup instructions, not a partial run.
+
+**Verified live in this session's sandbox, not just reasoned about:** created a real `intelligence/.venv`, installed the union requirements, then ran all 6 components' test files against that single shared interpreter exactly as the updated script does — all 56 tests passed (9+13+10+8+6+10), confirming no import collisions or dependency conflicts between components sharing one environment. `docs/testing/TESTING.md` updated with the new one-time setup command and a note that old per-component `.venv` dirs are safe to delete.
+
+**Structural side effect worth naming:** this closes the actual root cause behind item 33 (a component's venv silently missing and another one borrowed instead) for good, not just for `security-gate` — there is no longer a "which component's venv is this" question to get wrong.
+
+**Not yet done — needs the user, next session:** create the real shared venv on the native lab machine (commands below) and confirm the same 56/56 pass from there; delete the now-unused old per-component `.venv` dirs to actually reclaim the disk space that was this item's original complaint.
+
+**Next:** item 31 (remaining `docs/setup/` files) or item 34 (native-CLAB workflow) — open choice per the working order.
+
+### 2026-09-17 (48) — `security-gate` gets its own real venv (item 33 closed)
+
+**Focus:** second item off the working-order checklist. Checked `security-gate/requirements.txt` first, live, before assuming anything needed fixing — it already correctly lists `requests`, `chromadb` (transitively required, with a comment explaining why), and `pytest`. The gap was purely operational: the venv itself was never created, so every prior `gate.py`/`pytest` run in this directory silently fell through to whatever venv happened to be active (`remediation-proposal`'s, per entry 43's original discovery).
+
+**Fixed:** user ran `python3 -m venv .venv && pip install -r requirements.txt` inside `~/netmind-lab/intelligence/security-gate`, then `python -m pytest test_gate.py -v` from inside that venv specifically. All 10 tests passed — confirmed live output shows the interpreter path as `intelligence/security-gate/.venv/bin/python`, not borrowed from elsewhere.
+
+**Next:** item 32 — consolidate the four overlapping host venvs (`diagnosis-assistant`, `remediation-proposal`, `security-gate`, `config-push-executor` all transitively pull in `chromadb`). Now that every component has its own real venv (this entry) and `anomaly-detection`/`retrieval-index` have theirs (entry 47), there's a full, accurate picture of the actual overlap to design the consolidation against — worth doing now rather than before.
+
 ### 2026-09-17 (47) — Automated tests for components #5/#6 (item 30b): 16 more tests, no new pattern actually needed
 
 **Focus:** first item off the new "Working order" checklist in `BACKLOG.md` — closing the containerized-component gap left open by entry 46. Real source pulled live from the user's machine (`detector.py`, `ingest.py`, `query.py`, their `requirements.txt`s) via the device bridge before writing anything, same discipline as every other test file in this project — not assumed from the design docs.

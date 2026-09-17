@@ -1,0 +1,23 @@
+# NetMind AI — shared host venv for every intelligence/-layer component's
+# dev/test work (BACKLOG.md item 32, closed 2026-09-17).
+#
+# One venv here (intelligence/.venv) replaces the six separate
+# per-component venvs that used to exist. Union of every pin already in
+# use across diagnosis-assistant/, remediation-proposal/, security-gate/,
+# config-push-executor/, anomaly-detection/, retrieval-index/ — same
+# exact versions each component already required individually, nothing
+# upgraded or changed as part of this consolidation. A component
+# importing a package it doesn't itself need (e.g. config-push-executor
+# never touches chromadb) is harmless: it just isn't imported.
+#
+# Each component keeps its OWN requirements.txt unchanged — those still
+# matter for anomaly-detection/retrieval-index's Docker image builds
+# (their production runtime, unaffected by this) and as accurate
+# per-component documentation of what that component actually imports.
+# This file is host-venv convenience only.
+
+requests==2.32.3
+chromadb==0.5.23
+ncclient==0.6.15
+prometheus-client==0.20.0
+pytest==8.3.3
