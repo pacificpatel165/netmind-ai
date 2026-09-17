@@ -33,6 +33,18 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-17 (50) — All 8 missing `docs/setup/` files written (item 31 closed)
+
+**Focus:** fourth item off the working-order checklist. Pulled every component's real README.md live from the user's machine first (`telemetry/`, `metrics/`, `grafana/`, and all six `intelligence/` component READMEs) rather than writing setup steps from memory of what the design docs describe — each of those READMEs already had accurate, previously-verified "Running it"/"Verifying it" sections; this pass turned them into the numbered `0N-<component>.md` format the folder's convention (established in entry 2/`01-network-lab-environment.md`) expects, adding the deploy-order framing and known-gotcha call-outs that make each file usable standalone rather than requiring the README open alongside it.
+
+**Written:** `02-telemetry-collector.md`, `03-metrics-store.md`, `04-dashboards.md`, `05-anomaly-detection.md`, `06-retrieval-index.md`, `08-remediation-proposal.md`, `09-security-gate.md`, `10-config-push-executor.md`. `docs/setup/` now covers all 10 components.
+
+**Kept internally consistent with this session's own recent changes, not just historically accurate:** #8/#9/#10's setup docs correctly describe the shared `intelligence/.venv` from entry 49's item 32 consolidation as the primary path, with the old per-component venv layout called out explicitly as a fallback for a machine that hasn't picked up that change yet — rather than either ignoring the consolidation or silently assuming every reader is already on it.
+
+**Real finding, not fixed in this pass:** `docs/setup/07-diagnosis-assistant.md` (the one setup file that already existed) is itself stale — its header still says "(in progress)" and its closing section lists component #7 as not yet built, despite #7 having been fully built and live-verified since entry 29 (2026-09-13). Caught while cross-referencing it for the new files' prerequisite chains. Deliberately not fixed here — out of scope for "write the missing files" — logged as `BACKLOG.md` item 37 instead of silently left inconsistent.
+
+**Next:** item 34 (evaluate native-CLAB as the real git working copy) or item 37 (fix the stale #7 setup doc) — open choice per the working order; items 4 (Kubernetes) and 29 (AWS) are next after those.
+
 ### 2026-09-17 (49) — Venv consolidation (item 32): six host venvs down to one, verified against the real 56-test suite
 
 **Focus:** third item off the working-order checklist, and the one item 33 explicitly flagged as possibly subsumed by it. Asked directly which of `BACKLOG.md` item 32's two named options to take — "one shared venv" chosen over "installable local package" as the right fit for a project this size (simpler, fewer moving parts, and the package-abstraction approach would be solving a problem this codebase doesn't have yet).
