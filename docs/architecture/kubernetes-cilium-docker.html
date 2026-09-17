@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cilium, Kubernetes and Docker — NetMind AI</title>
+<style>
+  :root{
+    --ink:#1c2430;
+    --ink-soft:#4a5568;
+    --paper:#f6f4ee;
+    --panel:#ffffff;
+    --line:#c9c0ac;
+    --line-soft:#ddd6c4;
+    --k8s:#3b6ea5;
+    --k8s-soft:#e5edf4;
+    --docker:#4f7a6b;
+    --docker-soft:#e6efec;
+    --accent:#d97f2e;
+    --accent-soft:#faead9;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#eae6db;
+      --ink-soft:#b7b0a0;
+      --paper:#181c22;
+      --panel:#20252c;
+      --line:#454b56;
+      --line-soft:#31373f;
+      --k8s:#7fa8d6;
+      --k8s-soft:#212e3c;
+      --docker:#8fbba8;
+      --docker-soft:#1d2925;
+      --accent:#eb9c52;
+      --accent-soft:#332419;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#eae6db;
+    --ink-soft:#b7b0a0;
+    --paper:#181c22;
+    --panel:#20252c;
+    --line:#454b56;
+    --line-soft:#31373f;
+    --k8s:#7fa8d6;
+    --k8s-soft:#212e3c;
+    --docker:#8fbba8;
+    --docker-soft:#1d2925;
+    --accent:#eb9c52;
+    --accent-soft:#332419;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    line-height:1.55;
+    padding-inline:16px;
+    padding-block:48px;
+  }
+  main{max-width:760px;margin:0 auto;}
+
+  h1{
+    font-family:'IBM Plex Sans',sans-serif;
+    font-weight:700;
+    font-size:clamp(1.7rem,4vw,2.3rem);
+    letter-spacing:-0.01em;
+    text-wrap:balance;
+    margin:0 0 4px;
+  }
+  .kicker{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:0.78rem;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    margin:0 0 18px;
+  }
+  h2{
+    font-size:1.25rem;
+    font-weight:700;
+    margin:2.6em 0 0.6em;
+    letter-spacing:-0.005em;
+  }
+  p{margin:0.9em 0;max-width:64ch;}
+  .lede{font-size:1.05rem;color:var(--ink-soft);max-width:62ch;}
+  code, .mono{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:0.9em;
+    background:var(--line-soft);
+    padding:0.1em 0.35em;
+    border-radius:4px;
+  }
+  strong{font-weight:600;}
+
+  figure{margin:1.8em 0 0.6em;padding:0;}
+  .diagram-frame{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:14px;
+    overflow-x:auto;
+  }
+  svg{display:block;width:100%;height:auto;max-width:100%;}
+  figcaption{
+    margin-top:10px;
+    font-size:0.88rem;
+    color:var(--ink-soft);
+    max-width:62ch;
+  }
+
+  /* svg helpers */
+  .box{fill:var(--panel);stroke:var(--line);stroke-width:1.5;}
+  .box-k8s{fill:var(--k8s-soft);stroke:var(--k8s);stroke-width:1.5;}
+  .box-docker{fill:var(--docker-soft);stroke:var(--docker);stroke-width:1.5;}
+  .box-accent{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.8;}
+  .lbl{font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;fill:var(--ink);}
+  .lbl-b{font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;font-weight:600;fill:var(--ink);}
+  .lbl-sm{font-family:'IBM Plex Mono',monospace;font-size:10.5px;fill:var(--ink-soft);}
+  .lbl-accent{font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:600;fill:var(--accent);}
+  .edge{stroke:var(--ink-soft);stroke-width:1.4;fill:none;}
+  .edge-accent{stroke:var(--accent);stroke-width:1.8;fill:none;}
+  .edge-dash{stroke:var(--ink-soft);stroke-width:1.2;fill:none;stroke-dasharray:4 3;}
+  .kernel{fill:var(--line-soft);stroke:var(--line);stroke-width:1.5;}
+  .divider{stroke:var(--line);stroke-width:1;stroke-dasharray:3 4;}
+
+  table{border-collapse:collapse;width:100%;margin:0.6em 0 1.4em;font-size:0.92rem;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line-soft);vertical-align:top;}
+  th{font-family:'IBM Plex Mono',monospace;font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;}
+  td .mono{white-space:nowrap;}
+
+  .swatches{display:flex;gap:18px;flex-wrap:wrap;margin:0.4em 0 1.2em;font-size:0.85rem;color:var(--ink-soft);}
+  .swatch{display:flex;align-items:center;gap:6px;}
+  .dot{width:10px;height:10px;border-radius:3px;flex:none;}
+  .dot-docker{background:var(--docker);}
+  .dot-k8s{background:var(--k8s);}
+  .dot-accent{background:var(--accent);}
+
+  footer{margin-top:3em;padding-top:1.2em;border-top:1px solid var(--line-soft);font-size:0.82rem;color:var(--ink-soft);}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+</head>
+<body>
+
+<main>
+  <p class="kicker">NetMind AI — component #4 (Kubernetes) reference</p>
+  <h1>Cilium, Kubernetes and Docker, on one kernel</h1>
+  <p class="lede">Two separate container stacks are now running side by side on the same <code>Containerlab</code> WSL2 distro: the Docker/containerlab stack from components #1&ndash;10, and a new k3s cluster with Cilium as its CNI. Neither replaces the other. This is how they actually relate underneath.</p>
+
+  <h2>1. Two stacks, one kernel</h2>
+  <p>Every container — Docker or Kubernetes — is ultimately the same Linux primitives: namespaces, cgroups, and (for Cilium) eBPF hooks in the kernel. What differs is who's driving. <span class="mono">clab deploy</span> talks to <strong>dockerd</strong> directly; <span class="mono">kubectl</span> talks to <strong>k3s</strong>'s API server, which schedules onto its own, separate embedded <code>containerd</code> — not Docker's. They don't share a control plane, and nothing crosses between them unless you wire it yourself.</p>
+
+  <figure>
+    <div class="diagram-frame">
+      <svg viewBox="0 0 880 400" role="img" aria-label="Two independent container stacks — Docker/containerlab on the left, k3s/Cilium on the right — both ultimately running on the same shared Linux kernel, with no traffic crossing between them automatically.">
+        <defs>
+          <marker id="arH" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <polygon points="0,0 7,3 0,6" fill="var(--ink-soft)"/>
+          </marker>
+          <marker id="arA" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <polygon points="0,0 7,3 0,6" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- entry points -->
+        <rect class="box" x="40" y="18" width="180" height="38" rx="6"/>
+        <text class="lbl-b" x="130" y="41" text-anchor="middle">you: clab deploy</text>
+
+        <rect class="box" x="660" y="18" width="180" height="38" rx="6"/>
+        <text class="lbl-b" x="750" y="41" text-anchor="middle">you: kubectl apply</text>
+
+        <line class="edge" x1="130" y1="56" x2="130" y2="86" marker-end="url(#arH)"/>
+        <line class="edge" x1="750" y1="56" x2="750" y2="86" marker-end="url(#arH)"/>
+
+        <!-- control layer -->
+        <rect class="box-docker" x="40" y="88" width="340" height="46" rx="6"/>
+        <text class="lbl-b" x="210" y="107" text-anchor="middle">dockerd (Docker CE)</text>
+        <text class="lbl-sm" x="210" y="123" text-anchor="middle">own containerd + runc underneath</text>
+
+        <rect class="box-k8s" x="500" y="88" width="340" height="46" rx="6"/>
+        <text class="lbl-b" x="670" y="107" text-anchor="middle">k3s: API server + scheduler + kubelet</text>
+        <text class="lbl-sm" x="670" y="123" text-anchor="middle">one binary, one systemd service</text>
+
+        <line class="edge" x1="210" y1="134" x2="210" y2="164" marker-end="url(#arH)"/>
+        <line class="edge" x1="670" y1="134" x2="670" y2="164" marker-end="url(#arH)"/>
+
+        <!-- runtime layer -->
+        <rect class="box-docker" x="40" y="166" width="340" height="46" rx="6"/>
+        <text class="lbl" x="210" y="189" text-anchor="middle">containerd (Docker's) → runc</text>
+
+        <rect class="box-k8s" x="500" y="166" width="340" height="46" rx="6"/>
+        <text class="lbl" x="670" y="185" text-anchor="middle">containerd (k3s's own, separate) → runc</text>
+        <text class="lbl-sm" x="670" y="200" text-anchor="middle">a different containerd instance than Docker's</text>
+
+        <line class="edge" x1="210" y1="212" x2="210" y2="242" marker-end="url(#arH)"/>
+        <line class="edge" x1="670" y1="212" x2="670" y2="242" marker-end="url(#arH)"/>
+
+        <!-- workload layer -->
+        <rect class="box" x="40" y="244" width="340" height="56" rx="6"/>
+        <text class="lbl-b" x="210" y="266" text-anchor="middle">Docker containers (components #1–10)</text>
+        <text class="lbl-sm" x="210" y="284" text-anchor="middle">srl1 · srl2 · gnmic · prometheus · grafana · chroma · anomaly-detector</text>
+
+        <rect class="box" x="500" y="244" width="150" height="56" rx="6"/>
+        <text class="lbl-b" x="575" y="268" text-anchor="middle">Pod(s)</text>
+        <text class="lbl-sm" x="575" y="286" text-anchor="middle">your workloads</text>
+
+        <rect class="box-accent" x="670" y="244" width="170" height="56" rx="6"/>
+        <text class="lbl-accent" x="755" y="266" text-anchor="middle">Cilium (CNI)</text>
+        <text class="lbl-sm" x="755" y="284" text-anchor="middle">only on this side</text>
+
+        <line class="edge-accent" x1="650" y1="272" x2="670" y2="272" marker-end="url(#arA)"/>
+        <text class="lbl-sm" x="660" y="238" text-anchor="middle">wires pod netns</text>
+
+        <line class="edge" x1="210" y1="300" x2="210" y2="332" marker-end="url(#arH)"/>
+        <line class="edge" x1="575" y1="300" x2="575" y2="332" marker-end="url(#arH)"/>
+        <line class="edge" x1="755" y1="300" x2="755" y2="332" marker-end="url(#arH)"/>
+
+        <!-- kernel -->
+        <rect class="kernel" x="40" y="334" width="800" height="46" rx="6"/>
+        <text class="lbl-b" x="440" y="354" text-anchor="middle">Linux kernel — namespaces · cgroups · eBPF hooks</text>
+        <text class="lbl-sm" x="440" y="370" text-anchor="middle">one shared "Containerlab" WSL2 distro</text>
+
+        <!-- divider -->
+        <line class="divider" x1="440" y1="10" x2="440" y2="334"/>
+        <text class="lbl-sm" x="440" y="8" text-anchor="middle" transform="rotate(0)">independent control planes</text>
+      </svg>
+    </div>
+    <figcaption>Docker/containerlab (left) and k3s/Cilium (right) are two unrelated control planes that happen to schedule onto the same kernel. Cilium only exists on the Kubernetes side — the Docker-run lab containers have no CNI and never needed one.</figcaption>
+  </figure>
+
+  <h2>2. What a Pod actually is</h2>
+  <p>A Pod isn't a container — it's <strong>one or more containers that share a network namespace</strong>. Kubernetes creates a hidden <code>pause</code> container first, which does nothing but hold that namespace open (one IP, one <code>eth0</code>) for the real containers to join. That's the whole trick: containers in a Pod see each other on <code>localhost</code> because they're genuinely inside the same network namespace, not because of any magic routing.</p>
+  <p>Getting that namespace connected to the rest of the cluster — so the Pod's IP is actually reachable from other Pods and other nodes — is exactly the job the CNI plugin does. That's where Cilium comes in.</p>
+
+  <h2>3. How Cilium wires a Pod in</h2>
+  <p>For each Pod, a <strong>veth pair</strong> is created — two ends of a virtual cable. One end goes inside the Pod's network namespace as <code>eth0</code>; the other stays in the node's root namespace. A traditional CNI (Flannel, plain Calico) would plug that host-side end into a Linux bridge and let iptables handle routing and NAT. Cilium does the equivalent job differently: <strong>eBPF programs</strong>, compiled and attached by <code>cilium-agent</code> directly at that veth, decide where each packet goes — no bridge, no iptables chain to walk.</p>
+
+  <figure>
+    <div class="diagram-frame">
+      <svg viewBox="0 0 820 400" role="img" aria-label="Two pods on one node, each a pause container plus app container sharing a network namespace, connected via veth pairs to eBPF programs that cilium-agent attaches at the host end, routing pod-to-pod traffic directly without a bridge or iptables.">
+        <defs>
+          <marker id="arH2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <polygon points="0,0 7,3 0,6" fill="var(--ink-soft)"/>
+          </marker>
+          <marker id="arA2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <polygon points="0,0 7,3 0,6" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- Pod A -->
+        <rect x="30" y="26" width="220" height="140" rx="10" fill="none" stroke="var(--line)" stroke-width="1.4" stroke-dasharray="5 3"/>
+        <text class="lbl-sm" x="140" y="18" text-anchor="middle">Pod A</text>
+        <rect class="box" x="50" y="42" width="180" height="36" rx="5"/>
+        <text class="lbl" x="140" y="64" text-anchor="middle">pause — holds netns + IP</text>
+        <rect class="box" x="50" y="90" width="180" height="36" rx="5"/>
+        <text class="lbl" x="140" y="112" text-anchor="middle">app container</text>
+        <text class="lbl-sm" x="140" y="150" text-anchor="middle">eth0 (veth, pod side)</text>
+
+        <!-- Pod B -->
+        <rect x="570" y="26" width="220" height="140" rx="10" fill="none" stroke="var(--line)" stroke-width="1.4" stroke-dasharray="5 3"/>
+        <text class="lbl-sm" x="680" y="18" text-anchor="middle">Pod B</text>
+        <rect class="box" x="590" y="42" width="180" height="36" rx="5"/>
+        <text class="lbl" x="680" y="64" text-anchor="middle">pause — holds netns + IP</text>
+        <rect class="box" x="590" y="90" width="180" height="36" rx="5"/>
+        <text class="lbl" x="680" y="112" text-anchor="middle">app container</text>
+        <text class="lbl-sm" x="680" y="150" text-anchor="middle">eth0 (veth, pod side)</text>
+
+        <!-- veth lines down to host ns -->
+        <line class="edge" x1="140" y1="166" x2="140" y2="216" marker-end="url(#arH2)"/>
+        <line class="edge" x1="680" y1="166" x2="680" y2="216" marker-end="url(#arH2)"/>
+
+        <!-- host network namespace band -->
+        <rect class="kernel" x="30" y="218" width="760" height="70" rx="8"/>
+        <text class="lbl-b" x="400" y="240" text-anchor="middle">node's root network namespace</text>
+        <rect class="box-accent" x="90" y="252" width="150" height="26" rx="5"/>
+        <text class="lbl-sm" x="165" y="270" text-anchor="middle">eBPF: veth hook</text>
+        <rect class="box-accent" x="580" y="252" width="150" height="26" rx="5"/>
+        <text class="lbl-sm" x="655" y="270" text-anchor="middle">eBPF: veth hook</text>
+
+        <!-- direct pod-to-pod path -->
+        <line class="edge-accent" x1="240" y1="265" x2="580" y2="265" marker-end="url(#arA2)"/>
+        <text class="lbl-accent" x="410" y="255" text-anchor="middle">pod-to-pod — routed by eBPF, no bridge</text>
+
+        <!-- cilium-agent -->
+        <rect class="box-accent" x="300" y="316" width="220" height="46" rx="6"/>
+        <text class="lbl-accent" x="410" y="338" text-anchor="middle">cilium-agent (DaemonSet)</text>
+        <text class="lbl-sm" x="410" y="353" text-anchor="middle">one per node — programs the eBPF above</text>
+        <line class="edge-accent" x1="360" y1="316" x2="200" y2="288" marker-end="url(#arA2)"/>
+        <line class="edge-accent" x1="460" y1="316" x2="620" y2="288" marker-end="url(#arA2)"/>
+
+        <!-- service note -->
+        <text class="lbl-sm" x="400" y="392" text-anchor="middle">Service (ClusterIP) traffic: an eBPF map lookup here replaces kube-proxy's iptables rules entirely</text>
+      </svg>
+    </div>
+    <figcaption>What "Cilium replaces kube-proxy" means mechanically: pod-to-pod and Service traffic are both decided by eBPF programs cilium-agent attaches at each Pod's veth, not by a bridge or an iptables chain.</figcaption>
+  </figure>
+
+  <h2>Where this project's design goes next</h2>
+  <p>Right now every Pod's traffic between nodes would ride an overlay (VXLAN encapsulation) — Cilium's default, and the right choice for "prove it works" first. The <code>e1-2</code> interface each SR Linux node reserved back in component #1 is for a later step: switching Cilium to <strong>native routing</strong>, so cluster traffic rides that real interface directly instead of being wrapped in an overlay. That's genuinely non-trivial and deliberately not attempted until a plain workload is proven end-to-end on what's running now.</p>
+
+  <h2>Quick reference</h2>
+  <table>
+    <tr><th>Term</th><th>What it actually is</th></tr>
+    <tr><td class="mono">Node</td><td>One machine in the cluster — here, the <code>Containerlab</code> WSL2 distro itself, playing <code>control-plane</code>.</td></tr>
+    <tr><td class="mono">Pod</td><td>One or more containers sharing a network namespace, held open by a hidden <code>pause</code> container.</td></tr>
+    <tr><td class="mono">kubelet</td><td>Per-node agent that asks containerd to create/destroy containers to match what the API server wants.</td></tr>
+    <tr><td class="mono">containerd</td><td>The actual container runtime. k3s bundles its own — separate from Docker's, even on the same host.</td></tr>
+    <tr><td class="mono">CNI</td><td>The contract Kubernetes defines for pod networking, and the plugin (here, Cilium) that fulfills it.</td></tr>
+    <tr><td class="mono">eBPF</td><td>Small programs run inside the kernel at network hook points — what Cilium uses instead of iptables.</td></tr>
+    <tr><td class="mono">veth pair</td><td>A virtual cable: one end in a Pod's namespace as <code>eth0</code>, the other in the node's root namespace.</td></tr>
+    <tr><td class="mono">DaemonSet</td><td>One Pod per node, always — how <code>cilium-agent</code> and <code>cilium-envoy</code> are deployed.</td></tr>
+    <tr><td class="mono">kube-proxy</td><td>The traditional Service-routing component. Disabled here — Cilium's eBPF replaces its whole job.</td></tr>
+  </table>
+
+  <div class="swatches">
+    <span class="swatch"><span class="dot dot-docker"></span>Docker / containerlab stack</span>
+    <span class="swatch"><span class="dot dot-k8s"></span>k3s control plane</span>
+    <span class="swatch"><span class="dot dot-accent"></span>Cilium / eBPF</span>
+  </div>
+
+  <footer>NetMind AI — Signal Path — written 2026-09-17, alongside k3s + Cilium's first live install on <span class="mono">prashant-patel</span> (component-map item 4). Also published as an interactive page: see the Artifact link shared in this session, or ask Claude to republish it.</footer>
+</main>
+
+</body>
+</html>
