@@ -33,6 +33,22 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-17 (52) — Item 34 evaluated: native-CLAB-as-source-of-truth declined, real fix applied instead
+
+**Focus:** the last cross-cutting cleanup item before Kubernetes/AWS. Item 34's own "done" criteria explicitly demanded a real answer for how Windows-side tooling would reach a native-only repo before adopting it — not a theoretical simplification. Took that literally: tested the actual constraint live rather than reasoning about it abstractly.
+
+**The test:** called `device_list_dir` against `\\wsl$\Containerlab\home\clab\netmind-lab` directly. Result: `UNC paths are not allowed`, a hard refusal, not a workaround-able limitation. This is decisive — this whole session's collaboration model runs entirely on `SendUserFile` + `device_commit_files`, both of which only reach `C:\...` paths. Making `~/netmind-lab` the actual git working copy (no Windows-mounted copy at all) would sever Claude's own ability to write into this project directly, turning every future session into "hand the user a diff to apply by hand" rather than "commit it directly" — a materially bigger cost than the sync-discipline bug the migration would fix.
+
+**Worth being precise about:** `VS Code Remote-WSL` genuinely does solve this for a human alone — it runs a server inside the distro over a local socket, not through `DrvFs`/UNC, so it was a real, correct answer to the literal question item 34's "done" criteria asked. It just doesn't solve the actual constraint that matters most for how this project has been worked on every session so far.
+
+**Decision: declined.** Not "too much effort" or "not now" — a real trade-off evaluated and rejected for a specific, tested reason, same discipline as the credential-scoping conclusion in entry 41 and the Kafka/retention deferrals.
+
+**Real underlying bug fixed a different, smaller way:** entry 43's actual incident wasn't "the two-filesystem design is wrong," it was "a manual `clab deploy` ran without syncing first." `lab-up.sh` already auto-syncs before every deploy — checked whether `run-all-tests.sh` (the other real ad hoc native-execution entry point) had the same protection and confirmed it didn't: it only checked `$REPO_ROOT` exists, the identical silent-staleness exposure, just for test runs instead of deploys, and had simply never bitten anyone yet. Fixed by adding the same auto-sync step `lab-up.sh` uses, right before the venv/component checks. Syntax-checked (`bash -n`) before shipping.
+
+**BACKLOG.md status:** every cross-cutting cleanup item from the original platform audit (entry 44) is now closed or resolved. What's left: items 4 (Kubernetes) and 29 (AWS) — the two big deferred learning-gap items — item 35 (Groq/Gemini), and component #11 itself.
+
+**Next:** open choice — Kubernetes (item 4, matches `SIGNAL_PATH.md`'s original before-the-lab sequencing) or AWS/LocalStack (item 29).
+
 ### 2026-09-17 (51) — Stale `07-diagnosis-assistant.md` fixed (item 37 closed)
 
 **Focus:** the quick honesty fix flagged while writing entry 50's 8 new setup docs. The file's header still said "(in progress)" and its closing "Not yet done" section listed the PromQL router/fallback/prompt-assembly build as unstarted — all of it has actually been done and live-verified since entry 29 (2026-09-13), four days before this fix.

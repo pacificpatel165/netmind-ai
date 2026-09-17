@@ -43,12 +43,33 @@
 # one venv to have or not have. Create it once:
 #   cd intelligence && python3 -m venv .venv && source .venv/bin/activate \
 #     && pip install -r requirements.txt && deactivate
+#
+# Auto-syncs from the Windows-mounted repo before running, same pattern
+# lab-up.sh already used for deploys (2026-09-17, item 34's evaluation).
+# Item 34 considered making ~/netmind-lab the actual git working copy
+# instead of a sync target, to remove the "forgot to sync, ran stale
+# code" bug class at the root (entry 43 hit it once for `clab deploy`;
+# this script had the identical exposure for test runs, just never bit
+# anyone yet). Declined: it would sever this session's own Claude<->repo
+# collaboration path (SendUserFile/device_commit_files only reach
+# C:\... paths -- a live check confirmed \\wsl$\Containerlab\... UNC
+# paths are refused outright), which is a real, larger cost than the
+# sync-discipline bug it would fix. Auto-syncing here instead closes
+# the actual gap without that trade -- same fix shape as lab-up.sh,
+# applied to the other ad hoc native-execution entry point.
 
 set -uo pipefail
 
+REPO_WIN="/mnt/c/MyWorkSpace/AI-Projects/NetMind-AI"
 REPO_ROOT="$HOME/netmind-lab"
 SHARED_VENV="$REPO_ROOT/intelligence/.venv"
 FAILED=0
+
+if [ -d "$REPO_WIN" ]; then
+  echo "== Syncing repo to native filesystem =="
+  bash "$REPO_WIN/scripts/sync-to-lab.sh"
+  echo
+fi
 
 if [ ! -d "$REPO_ROOT" ]; then
   echo "ERROR: $REPO_ROOT doesn't exist -- run scripts/sync-to-lab.sh first (see its header comment for why venvs only exist here, not on the Windows-mounted copy)."
