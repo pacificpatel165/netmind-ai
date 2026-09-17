@@ -33,6 +33,23 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-17 (47) — Automated tests for components #5/#6 (item 30b): 16 more tests, no new pattern actually needed
+
+**Focus:** first item off the new "Working order" checklist in `BACKLOG.md` — closing the containerized-component gap left open by entry 46. Real source pulled live from the user's machine (`detector.py`, `ingest.py`, `query.py`, their `requirements.txt`s) via the device bridge before writing anything, same discipline as every other test file in this project — not assumed from the design docs.
+
+**Real finding that shaped the approach:** both components turned out not to need a different test pattern at all. `detector.py`'s only dependencies (`requests`, `prometheus_client`) are plain host-installable; `chromadb` is heavy but already proven host-installable (three of the other four components transitively pull it in, per item 32). The "containerized → needs a different pattern" assumption in item 30b's original framing was wrong — the container is a *deployment* detail, not a *testability* one, once the live dependency (Prometheus for #5, Chroma for #6) is mocked at its client boundary.
+
+**Built and run for real, in a fresh venv, before being called done:**
+- `intelligence/anomaly-detection/test_detector.py` (6 tests) — `series_by_interface()`'s label handling, including a direct regression test for the real `interface_name`/`name` bug from entry 26/27 (missing label degrades to `"unknown"` rather than raising); `evaluate_leaf()`'s z-score math via `detector.query()` mocked with `unittest.mock.patch.object`, including the zero-stddev divide-by-zero guard and the "interface has no baseline series yet" case.
+- `intelligence/retrieval-index/test_ingest.py` (7 tests) — `chunk_text()`'s boundary/overlap behavior (verified against the actual sliding-window math, not just "it returns something"), plus `main()`'s document-assembly and `upsert()` call shape with `chromadb.HttpClient` mocked via `monkeypatch`, including the real "no documents matched" early-return path.
+- `intelligence/retrieval-index/test_query.py` (3 tests) — the no-argument usage exit, the empty-collection guard (confirms `collection.query()` is never called), and the real `argv`-joining + `TOP_K` pass-through into `collection.query()`.
+
+**Wired in:** both components added to `scripts/run-all-tests.sh` (after `config-push-executor`), `pytest==8.3.3` added to both `requirements.txt`s, `docs/testing/TESTING.md`'s automated-tests section updated. `BACKLOG.md` item 30b moved to Resolved.
+
+**Running total:** 56 automated tests across all 6 covered components (40 from entry 45 + 16 this entry), all run and passing in this session's sandbox venvs.
+
+**Next:** per the working-order checklist — item 33 (`security-gate` gets its own venv), then item 32 (venv consolidation).
+
 ### 2026-09-17 (46) — `run-all-tests.sh` false-positive bug found and fixed; real 40/40 pass confirmed live
 
 **Focus:** closing out entry 45's open thread — the first real run of `scripts/run-all-tests.sh` (from the user, on the native lab machine) exposed a genuine bug in the script itself, not in any component.

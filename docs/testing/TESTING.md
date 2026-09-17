@@ -50,9 +50,15 @@ and tells you the exact commands to create it.
 Covered: `diagnosis-assistant` (`test_router.py`), `remediation-proposal`
 (`test_remediation_templates.py`, `test_state_client.py`),
 `security-gate` (`test_gate.py`), `config-push-executor`
-(`test_executor.py`). Not covered by design, and correctly so: anything
-requiring a real device connection, a real Ollama call, or real
-Prometheus/Chroma data — that's what the rest of this file is for.
+(`test_executor.py`), `anomaly-detection` (`test_detector.py`),
+`retrieval-index` (`test_ingest.py`, `test_query.py`). The last two
+close `BACKLOG.md` item 30b (2026-09-17) — despite being containerized
+in deployment, both components' testable logic (z-score math, chunking,
+ingest/query call shapes against a mocked Chroma client) turned out to
+need nothing more than the same plain host-venv pytest pattern as the
+others. Not covered by design, and correctly so: anything requiring a
+real device connection, a real Ollama call, or real Prometheus/Chroma
+data — that's what the rest of this file is for.
 
 ---
 

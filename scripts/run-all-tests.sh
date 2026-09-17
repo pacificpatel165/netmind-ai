@@ -8,8 +8,14 @@
 # payload shapes pinned against what was proven live by hand, the
 # security gate's hashing/audit/default-deny logic, the config-push
 # executor's RPC-body parsing (a direct regression test for the real
-# ncclient/lxml bug found 2026-09-16), and the diagnosis assistant's
-# deterministic PromQL template routing.
+# ncclient/lxml bug found 2026-09-16), the diagnosis assistant's
+# deterministic PromQL template routing, the anomaly detector's z-score
+# math and interface_name label handling, and the retrieval index's
+# chunking logic and ingest/query flow against a mocked Chroma client
+# (components #5/#6, added 2026-09-17 closing BACKLOG.md item 30b --
+# despite being containerized in deployment, both components' testable
+# logic runs fine in a plain host venv, same as #7-#10, so no different
+# pattern was actually needed).
 #
 # Always runs against the NATIVE lab path (~/netmind-lab), never
 # wherever this script happens to be invoked from -- fixed 2026-09-17
@@ -72,6 +78,8 @@ run_component_tests "diagnosis-assistant"
 run_component_tests "remediation-proposal"
 run_component_tests "security-gate"
 run_component_tests "config-push-executor"
+run_component_tests "anomaly-detection"
+run_component_tests "retrieval-index"
 
 echo "=================================================="
 if [ "$RAN_ANY" -eq 0 ]; then
