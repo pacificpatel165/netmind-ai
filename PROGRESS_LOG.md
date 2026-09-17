@@ -33,6 +33,23 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-17 (46) — `run-all-tests.sh` false-positive bug found and fixed; real 40/40 pass confirmed live
+
+**Focus:** closing out entry 45's open thread — the first real run of `scripts/run-all-tests.sh` (from the user, on the native lab machine) exposed a genuine bug in the script itself, not in any component.
+
+**Bug found from live output:** invoked from `~/netmind-lab/intelligence/config-push-executor` (a subdirectory, not the repo root), the script's `REPO_ROOT="$(dirname "${BASH_SOURCE[0]}")/.."`-style resolution was fragile to invocation path in general — the specific failure the user hit was every component reporting `SKIP -- no .venv`, yet the script still printed **"All automated tests passed"**, because a fully-skipped run left `$FAILED` at 0. A false positive — the exact class of failure this whole automated-testing effort exists to prevent.
+
+**Fixed:**
+- `REPO_ROOT` hardcoded to `$HOME/netmind-lab` (mirrors `sync-to-lab.sh`'s own `REPO_NATIVE` convention) so the script always resolves correctly regardless of caller's cwd; errors out explicitly if that path doesn't exist.
+- Added a `RAN_ANY` flag — an all-skipped run now exits 1 with `"NOTHING RAN"` instead of silently reporting success.
+- Switched `pytest -q` to `pytest -v` (user request) for per-test pass/fail detail in the output instead of just dot-progress.
+
+**Verified live, for real this time:** user ran `bash ~/netmind-lab/scripts/run-all-tests.sh` after syncing — all 4 components' venvs existed and all 40 tests passed (`diagnosis-assistant` 9, `remediation-proposal` 13, `security-gate` 10, `config-push-executor` 8). This is the first genuine, non-skipped confirmation that `BACKLOG.md` item 30's test suite actually runs end-to-end outside this session.
+
+**`BACKLOG.md` item 30 status:** moved to done — automated coverage exists and is confirmed runnable for all 4 host-venv components. Items still open under the broader testing umbrella: components #5/#6 (containerized, different pattern needed).
+
+**Next:** open choice — #5/#6 test approach, remaining `docs/setup/` files, venv consolidation (item 32), native-CLAB workflow (item 34), or Kubernetes/AWS (items 4/29).
+
 ### 2026-09-17 (45) — Automated test suite built: 40 tests, one real bug fixed, one real bug caught in the tests themselves
 
 **Focus:** `BACKLOG.md` item 30, chosen (via AskUserQuestion) as the next platform-quality item over finishing the remaining `docs/setup/` files. Scope deliberately drawn: only the parts of each component that don't require live device state — payload shapes, hashing/audit logic, RPC-body parsing, template routing — not a replacement for `TESTING.md`'s live-device verification, which stays exactly as it is.
