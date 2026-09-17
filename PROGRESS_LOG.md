@@ -33,6 +33,23 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-17 (51) — Stale `07-diagnosis-assistant.md` fixed (item 37 closed)
+
+**Focus:** the quick honesty fix flagged while writing entry 50's 8 new setup docs. The file's header still said "(in progress)" and its closing "Not yet done" section listed the PromQL router/fallback/prompt-assembly build as unstarted — all of it has actually been done and live-verified since entry 29 (2026-09-13), four days before this fix.
+
+**Fixed:**
+- Added an explicit status line at the top instead of leaving the stale framing implicit or silently deleting the history of what was originally uncertain.
+- "Decided" section's provider-scope bullet updated with a 2026-09-16 note that item 35 reopened it (it previously said flatly "no Groq/Gemini for now" with no forward pointer).
+- Replaced the "Not yet done" closing section with a new §7 documenting what actually got built and verified: the PromQL template set + router + LLM-fallback path, the real off-template rejection that happened live (entry 28), the `octet_rate` template promotion it caused, and the actual exit-criterion command + result from entry 29.
+- §6 (venv setup) updated to mention the shared `intelligence/.venv` from item 32, with the old per-component commands kept as a fallback rather than deleted — this file predates that consolidation and shouldn't describe only the layout that no longer matches most readers' setup.
+- Added a §8 "Automated tests" pointer to `test_router.py`, matching the pattern already established in the 8 files from entry 50.
+
+**Why this matters beyond just fixing one file:** this is the second time in this project a doc was found describing a component as unbuilt/in-progress well after it was actually done and verified (the first was the root `README.md`, entry 44) — worth naming as a pattern (docs lag real progress unless a deliberate pass catches them) rather than treating each instance as unrelated.
+
+**BACKLOG.md status:** every open item from the original platform-audit list (entry 44) is now closed except items 4 (Kubernetes), 29 (AWS), 34 (native-CLAB), 35 (Groq/Gemini), and component #11 itself.
+
+**Next:** item 34 (native-CLAB workflow evaluation) — the last cross-cutting cleanup item before the two big learning-gap items (Kubernetes, AWS) and component #11.
+
 ### 2026-09-17 (50) — All 8 missing `docs/setup/` files written (item 31 closed)
 
 **Focus:** fourth item off the working-order checklist. Pulled every component's real README.md live from the user's machine first (`telemetry/`, `metrics/`, `grafana/`, and all six `intelligence/` component READMEs) rather than writing setup steps from memory of what the design docs describe — each of those READMEs already had accurate, previously-verified "Running it"/"Verifying it" sections; this pass turned them into the numbered `0N-<component>.md` format the folder's convention (established in entry 2/`01-network-lab-environment.md`) expects, adding the deploy-order framing and known-gotcha call-outs that make each file usable standalone rather than requiring the README open alongside it.

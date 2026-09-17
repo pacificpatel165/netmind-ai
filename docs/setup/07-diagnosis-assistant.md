@@ -1,9 +1,18 @@
-# Component #7 setup: diagnosis assistant (in progress)
+# Component #7 setup: diagnosis assistant
 
 Step-by-step record of environment install work for component #7,
 kept separate from `docs/setup/01-network-lab-environment.md` per this
 folder's numbering convention — component-specific setup gets its own
 file rather than piling into the shared one.
+
+**Status (updated 2026-09-17, `BACKLOG.md` item 37):** built and
+live-verified — see §7 below. This file previously described the
+component as "in progress" and listed the build as not-yet-done; that
+went stale once component #7 was actually finished and confirmed
+against the live lab (`PROGRESS_LOG.md` entry 29, 2026-09-13). Caught
+and fixed while writing the other 8 `docs/setup/` files (entry 50) —
+flagged separately rather than silently left inconsistent, same
+discipline as the root `README.md` fix in entry 44.
 
 **Decided:**
 - Model: **Llama 3.1 8B**, run via Ollama with `keep_alive: 0` on
@@ -21,12 +30,14 @@ file rather than piling into the shared one.
   a provider abstraction speculatively would break this project's
   established pattern of proving something's needed before building
   it (same reasoning as the Kafka, retention, and re-ingestion
-  deferrals in `docs/roadmap/BACKLOG.md`). Revisit if a real question
-  later exposes a correctness or capability gap 8B can't cover.
+  deferrals in `docs/roadmap/BACKLOG.md`). **Update, 2026-09-16:** a
+  concrete reason has since been given directly and this is reopened
+  as `BACKLOG.md` item 35 — not started yet, but no longer "no reason
+  exists."
 - Structured Prometheus query strategy: **hybrid** — fixed PromQL
   templates first, LLM-generated PromQL fallback, validated before
-  ever running (`PROGRESS_LOG.md` entry 21). Not yet built — this is
-  the next real build step for the component.
+  ever running (`PROGRESS_LOG.md` entry 21). Built and exercised for
+  real — see §7.
 
 ---
 
@@ -149,13 +160,22 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+**Update, 2026-09-17 (`BACKLOG.md` item 32):** since this venv
+consolidation, `diagnosis-assistant` shares `intelligence/.venv` with
+every other host-level component rather than having its own — if
+you've already created that shared venv for another component, use
+`source ../.venv/bin/activate` from inside `intelligence/
+diagnosis-assistant` instead of creating a new one here. The commands
+above still work standalone if you're on the older per-component
+layout.
+
 `.venv/` is gitignored (`intelligence/diagnosis-assistant/.gitignore`)
 — it's a local, disposable environment, not something to commit.
 Every subsequent run needs the venv active:
 
 ```bash
 cd ~/netmind-lab/intelligence/diagnosis-assistant
-source .venv/bin/activate
+source .venv/bin/activate   # or ../.venv/bin/activate — see the note above
 python assistant.py "<question>"
 ```
 
@@ -169,12 +189,43 @@ exclude, `sync-to-lab.sh`'s `rsync --delete` would wipe it on every
 in place, it correctly survives resyncs and only needs recreating if
 you delete it yourself or move to a fresh machine.
 
-## Not yet done
+## 7. Built and verified against the live lab (2026-09-13, PROGRESS_LOG entries 21–29)
 
-All design decisions for component #7 are now made (model, placement,
-provider scope, PromQL strategy). What's left is the actual build:
-the fixed PromQL template set, the router that picks a template or
-falls back to LLM-generated PromQL, the generate-and-validate fallback
-path itself, and the prompt assembly that combines retrieval (Chroma)
-+ structured metrics (Prometheus) + the question into what gets sent
-to Ollama.
+All design decisions above were carried through to a real, working
+component, not left as decisions on paper:
+
+- The fixed PromQL template set and the router that picks a template
+  or falls back to LLM-generated PromQL (`router.py`,
+  `promql_templates.py`).
+- The generate-and-validate fallback path — a real off-template
+  question ("what's the current traffic rate") made Llama 3.1 8B
+  generate syntactically invalid PromQL on the first attempt;
+  validation correctly rejected it and reported failure rather than
+  presenting bad data (entry 28). Traffic rate was then promoted to
+  its own fixed template (`octet_rate`) rather than left on the
+  fragile LLM-generated path, since it's too common a question for
+  that.
+- Prompt assembly combining retrieval (Chroma) + structured metrics
+  (Prometheus) + the question, sent to Ollama with citations.
+
+**Exit criterion met (entry 29):**
+
+```bash
+cd ~/netmind-lab/intelligence/diagnosis-assistant
+source ../.venv/bin/activate   # or ./.venv/bin/activate on the older layout
+python assistant.py "what's the current traffic rate on ethernet-1/1, and why don't we use Kafka to buffer this telemetry?"
+```
+
+Returned a correctly cited answer combining a real Prometheus number
+(via the `octet_rate` template) and a real doc citation (via retrieval
+against the re-ingested corpus) — proof this component actually
+answers grounded, cited questions against live data, not just that it
+runs without erroring.
+
+## 8. Automated tests (optional, no lab or Ollama needed)
+
+`test_router.py` covers `match_template()`/`extract_interface()`'s
+deterministic keyword routing, including the exact off-template case
+from entry 28 above, with no live Prometheus/Ollama/Chroma required.
+Uses the shared `intelligence/.venv` from §6 — see
+`docs/testing/TESTING.md`'s "Automated tests" section.
