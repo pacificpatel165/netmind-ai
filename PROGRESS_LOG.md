@@ -33,6 +33,32 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-17 (53) — Component #4 (Kubernetes): k3s + Cilium installed and verified live; one benign kernel-limitation finding
+
+**Focus:** Start component #4 (Kubernetes/Cilium) per the working-order checklist, following the design already recorded in `docs/setup/01-network-lab-environment.md`'s "Kubernetes — not installed yet" section: native k3s inside the `Containerlab` WSL2 distro (not Docker Desktop's Kubernetes toggle — same kernel-namespace isolation problem containerlab itself had to work around originally), Cilium as CNI, eventually wired to the `e1-2` interface each SR Linux node already reserves as a future underlay attachment point (deliberately deferred — separate, later, non-trivial step, not attempted this session).
+
+**Built/installed, all verified against real pasted output, nothing assumed:**
+- k3s installed via `curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--flannel-backend=none --disable-network-policy --disable=traefik --disable=servicelb" sh -` — no default CNI (Cilium replaces it from the start), no traefik/servicelb (not needed for this lab). Verified: `sudo k3s kubectl get nodes` showed node `prashant-patel`, correctly `NotReady` (no CNI yet), `control-plane` role, `v1.36.4+k3s1`; `systemctl status k3s` → `active (running)`.
+- kubeconfig wired up (`~/.kube/config` copied from `/etc/rancher/k3s/k3s.yaml`, ownership fixed, `KUBECONFIG` exported and persisted to `~/.bashrc`) so `kubectl` works without `sudo`.
+- Cilium CLI installed from the official GitHub release (sha256-verified), `cilium version` confirmed CLI v0.20.0 installed.
+- `cilium install` run with defaults (auto-detected `default` cluster name, no kube-proxy present, offered full kube-proxy replacement). `cilium status --wait` verified: Cilium OK, Operator OK, Envoy DaemonSet OK (Hubble Relay/ClusterMesh deliberately left disabled), 3/3 pods managed, `cilium:v1.20.1` / `cilium-envoy:v1.37.5-...` / `cilium-operator:v1.20.1`. `kubectl get nodes` → node now `Ready`. `kubectl get pods -n kube-system` → all `Running` (`cilium-8bpvv`, `cilium-envoy-pdcfg`, `cilium-operator-...`, `coredns-...`, `local-path-provisioner-...`, `metrics-server-...`).
+- Ran `cilium connectivity test` (the standard/official Cilium end-to-end proof tool — deploys real client/server test pods, exercises pod-to-pod, pod-to-Service, and DNS via CoreDNS, all through the eBPF datapath with kube-proxy disabled — chosen over a hand-rolled test to match this project's "use the real, established tool" discipline). **Real result: 78/79 tests passed.** The one failure was in `check-log-errors`, a log-hygiene check (not a connectivity test itself), which flagged one error-level line in `cilium-agent`'s logs:
+  ```
+  msg="Forcefully terminating sockets connected to deleted service backends not supported by underlying kernel" ... error="... kernel CONFIG_INET_DIAG_DESTROY must be set in order for this functionality to work"
+  ```
+
+**Researched (not guessed) before responding to the user:** confirmed via Cilium's own upstream issue tracker (`cilium/cilium` and related `docker/roadmap#840`, `microsoft/azurelinux#14108`) what `CONFIG_INET_DIAG_DESTROY` actually does and what happens without it. Finding: it's a kernel config bit that lets Cilium's kube-proxy-replacement mode proactively tear down stale UDP sockets pointed at deleted service backends (e.g. after a pod is replaced during a rolling update or scale-down). Without it, degradation is **graceful, not fatal**: TCP is essentially unaffected (apps detect the drop and reconnect through the Service to a live pod); UDP-heavy workloads (the docs' own example: DNS-over-UDP to a stale pod IP) can see transient resolution errors until the stale connection is naturally cleared. This is a documented, known constraint on minimal/custom kernels that omit this option — Docker Desktop's own linuxkit kernel and Microsoft's Azure Linux kernel hit the identical gap for the identical reason. Direct WSL2-specific confirmation wasn't found in the sources checked, but the pattern (a niche INET_DIAG option trimmed from a minimal, non-distro kernel) matches WSL2's kernel exactly, and the failure mode Cilium itself reports is consistent with that class of limitation, not a install/config mistake on this lab's side.
+
+**Assessment:** 78/79 real tests passing is genuine proof pod-to-pod and Service connectivity work end-to-end through Cilium's eBPF path. The one failure is a known, documented, non-fatal kernel-feature gap common to minimal kernels (WSL2 almost certainly included), not a real defect in this install. Treating it as an accepted, logged limitation rather than something to chase further right now — this lab has no UDP-heavy, high-churn workload yet where the gap would actually bite, and "eliminate it" would mean patching/rebuilding WSL2's kernel, which is disproportionate for a lab environment.
+
+**Decided:** accept the limitation, document it, move on. Revisit only if a future component (e.g. a UDP-based telemetry path) actually hits DNS/UDP flakiness tied to service backend churn — at that point this note is the first thing to check.
+
+**Not yet done:** deploying an actual application workload onto the cluster (beyond the connectivity test's own synthetic pods); the deferred `e1-2` native-routing step for Cilium; updating `BACKLOG.md` item 4's row to reflect this in-progress-but-substantially-working state (next).
+
+**Open questions:** none blocking — component #4 is functionally live; remaining work is additive (real workload, native routing) not corrective.
+
+---
+
 ### 2026-09-17 (52) — Item 34 evaluated: native-CLAB-as-source-of-truth declined, real fix applied instead
 
 **Focus:** the last cross-cutting cleanup item before Kubernetes/AWS. Item 34's own "done" criteria explicitly demanded a real answer for how Windows-side tooling would reach a native-only repo before adopting it — not a theoretical simplification. Took that literally: tested the actual constraint live rather than reasoning about it abstractly.
