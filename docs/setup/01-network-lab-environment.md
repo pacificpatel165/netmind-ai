@@ -253,10 +253,63 @@ sides; see the "Cilium BGP peering" subsection below and
   curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--flannel-backend=none --disable-network-policy --disable=traefik --disable=servicelb" sh -
   ```
   (no default CNI — Cilium replaces it from the start; traefik/servicelb
-  disabled, not needed for this lab). Then Cilium as CNI via the Cilium
-  CLI (`cilium install`), verified with `cilium status --wait` and
-  `cilium connectivity test` (78/79 passing — the one failure is a
-  benign, documented kernel-feature gap, see entry 53).
+  disabled, not needed for this lab).
+
+  **`kubectl` access** — k3s ships its own `kubectl` but points at
+  `/etc/rancher/k3s/k3s.yaml` by default, which needs `sudo` to read.
+  Wire up a normal-user kubeconfig once per distro:
+  ```bash
+  mkdir -p ~/.kube
+  sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+  sudo chown "$(id -u):$(id -g)" ~/.kube/config
+  echo 'export KUBECONFIG=~/.kube/config' >> ~/.bashrc
+  export KUBECONFIG=~/.kube/config   # for the current shell too
+  kubectl get nodes   # expect the node listed, NotReady (no CNI yet)
+  ```
+
+  **Cilium CLI** — not bundled with k3s, install separately (official
+  script, checksum-verified; re-check
+  https://github.com/cilium/cilium-cli/releases if this drifts):
+  ```bash
+  CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+  CLI_ARCH=amd64
+  curl -L --fail --remote-name-all "https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}"
+  sha256sum --check "cilium-linux-${CLI_ARCH}.tar.gz.sha256sum"
+  sudo tar xzvfC "cilium-linux-${CLI_ARCH}.tar.gz" /usr/local/bin
+  rm "cilium-linux-${CLI_ARCH}.tar.gz" "cilium-linux-${CLI_ARCH}.tar.gz.sha256sum"
+  cilium version   # confirm the CLI itself installed before using it
+  ```
+
+  Then install Cilium as CNI. **Two paths, pick one:**
+
+  - **Fresh install (recommended if you're standing this up new):**
+    enable BGP Control Plane and apply the BGP CRDs *before* the agent/
+    operator ever start — this sidesteps all three bugs documented in
+    the BGP section below (missing CRDs, stale operator watches,
+    startup-probe failure) entirely, since there's no already-running
+    process with stale state to recover from:
+    ```bash
+    for f in ciliumbgpclusterconfigs ciliumbgpnodeconfigs ciliumbgpnodeconfigoverrides ciliumbgppeerconfigs ciliumbgpadvertisements; do
+      kubectl apply -f "https://raw.githubusercontent.com/cilium/cilium/v1.20.1/pkg/k8s/apis/cilium.io/client/crds/v2/${f}.yaml"
+    done
+    cilium install --set bgpControlPlane.enabled=true
+    ```
+    (check `cilium version` / Cilium's release list first if installing
+    long after 2026-09-18 — pin the CRD URLs above to whatever version
+    `cilium install` actually pulls, not blindly to `v1.20.1`.)
+  - **Existing install, adding BGP later** (what actually happened on
+    this machine): `cilium install` with no extra flags, verify, *then*
+    see the "Cilium BGP peering" subsection further down for the
+    upgrade-and-recover sequence this specific machine needed.
+
+  Either way, verify before moving on:
+  ```bash
+  cilium status --wait
+  kubectl get nodes                    # node now Ready
+  cilium connectivity test             # 78/79 passing is the known-good baseline here —
+                                        # the 1 failure is a benign, documented kernel-feature
+                                        # gap (CONFIG_INET_DIAG_DESTROY), see entry 53
+  ```
 
 **Known environment bug, hit and fixed (2026-09-18, entry 62): CoreDNS
 crash-looping, all in-cluster DNS broken.** After deploying the first
@@ -369,16 +422,25 @@ set / network-instance default protocols bgp ebgp-default-policy import-reject-a
 commit stay
 ```
 
-Cilium side — the 5 BGP-related CRDs (`ciliumbgpclusterconfigs`,
+**If you followed the "fresh install" path above** (CRDs + `cilium
+install --set bgpControlPlane.enabled=true` together, before Cilium
+ever started), skip straight to `kubectl apply -f
+k8s/cilium-bgp-peering.yaml` below — none of the recovery steps in this
+box are needed, there's no stale process to recover.
+
+**If Cilium was already running without BGP enabled** (what actually
+happened on this machine, and the path this whole subsection documents
+in detail) — the 5 BGP-related CRDs (`ciliumbgpclusterconfigs`,
 `ciliumbgpnodeconfigs`, `ciliumbgpnodeconfigoverrides`,
 `ciliumbgppeerconfigs`, `ciliumbgpadvertisements`, all `cilium.io`) must
-exist before anything else here — they are **not** created by
-`cilium install`/`cilium upgrade` on their own (confirmed live, entry
-64: `cilium upgrade --set bgpControlPlane.enabled=true` flips the
-ConfigMap flag but never pushes the new CRD manifests). Apply them
-directly from Cilium's GitHub repo at the exact running version
-(check first with `cilium version` — don't assume it matches a doc
-example):
+be applied by hand — they are **not** created by `cilium install`/
+`cilium upgrade` on their own (confirmed live, entry 64: `cilium
+upgrade --set bgpControlPlane.enabled=true` flips the ConfigMap flag
+but never pushes the new CRD manifests). Apply them directly from
+Cilium's GitHub repo at the exact running version (check first with
+`cilium version` — don't assume it matches a doc example), and restart
+both the agent and the operator so neither is left running on
+pre-CRD-existence state:
 
 ```bash
 cilium upgrade --set bgpControlPlane.enabled=true
