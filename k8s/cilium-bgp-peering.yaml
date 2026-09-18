@@ -1,0 +1,76 @@
+# NetMind AI — component #4 (Kubernetes), BACKLOG.md item 4 task 5.
+#
+# Cilium BGP Control Plane config: peers the single k3s node with srl1
+# over the e1-2 underlay link (192.168.99.0/30, wired and addressed in
+# docs/setup/01-network-lab-environment.md) and advertises this node's
+# Pod CIDR into srl1's BGP table.
+#
+# ASN/addressing design (locked 2026-09-18):
+#   - Cilium/K8s side: ASN 65002, local address 192.168.99.1 (the host
+#     end of the host:srl1_e1-2 veth -- see lab/topologies/netmind-2node.clab.yml)
+#   - srl1/network side: ASN 65001, address 192.168.99.2 -- already
+#     configured and committed on srl1 (PROGRESS_LOG.md, item 4 BGP entry).
+#     srl1's `show network-instance default protocols bgp neighbor` showed
+#     State: active, Peer-AS 65002, waiting for exactly this config.
+#
+# Schema verified live against docs.cilium.io's BGP Control Plane +
+# BGP Control Plane Resources pages for this exact running version
+# (v1.20.1) before writing this -- not guessed. Prerequisite: the 5
+# BGP CRDs (ciliumbgp*.cilium.io) must already be applied -- see
+# docs/setup/01-network-lab-environment.md's "Cilium agent startup
+# failure -- missing BGP CRDs" subsection for how/why.
+#
+# Apply:
+#   kubectl apply -f k8s/cilium-bgp-peering.yaml
+# Verify:
+#   cilium bgp peers
+#   cilium bgp routes advertised ipv4 unicast
+# And from srl1:
+#   show network-instance default protocols bgp neighbor   # expect Established
+---
+# nodeSelector.matchLabels: {} (empty) intentionally matches every node --
+# this is a single-node k3s cluster, no need for a real label selector yet.
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
+metadata:
+  name: netmind-bgp
+spec:
+  nodeSelector:
+    matchLabels: {}
+  bgpInstances:
+    - name: "instance-65002"
+      localASN: 65002
+      peers:
+        - name: "srl1"
+          peerASN: 65001
+          peerAddress: 192.168.99.2
+          peerConfigRef:
+            name: "netmind-peer"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: netmind-peer
+spec:
+  # Defaults are fine for a lab point-to-point link -- no auth secret,
+  # no multihop (directly connected), short-ish timers so a down link
+  # is noticed quickly during testing.
+  timers:
+    holdTimeSeconds: 9
+    keepAliveTimeSeconds: 3
+  families:
+    - afi: ipv4
+      safi: unicast
+      advertisements:
+        matchLabels:
+          advertise: netmind-pod-cidr
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: netmind-pod-cidr-advertisement
+  labels:
+    advertise: netmind-pod-cidr
+spec:
+  advertisements:
+    - advertisementType: "PodCIDR"

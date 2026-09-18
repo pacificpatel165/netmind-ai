@@ -161,4 +161,4 @@ its reasoning in `docs/roadmap/BACKLOG.md`.
 | ingest.py / query.py | Containerlab distro (docker run, on demand — built locally) | chunk+embed docs into Chroma / prove retrieval works | — | ✅ verified |
 | Ollama | Containerlab distro (host-installed, not containerized) | local LLM daemon — serves Llama 3.1 8B, `keep_alive:0` per request | localhost:11434 | ✅ verified |
 | diagnosis-assistant | Containerlab distro (host-level venv, on demand — built locally) | hybrid PromQL + retrieval-grounded LLM answers, cited | — | ✅ verified |
-| k3s + Cilium | not yet built (same Containerlab distro) | K8s underlay, attaches to reserved `e1-2` | — | ⏳ planned · phase 2 |
+| k3s + Cilium | Containerlab distro (k3s host-installed; Cilium as CNI) | K8s cluster; real workload proven (`k8s/proof-app/`); BGP-peers with `srl1` over reserved `e1-2` (ASN 65002 ↔ 65001), Pod CIDR `10.0.0.0/24` advertised and validly installed | 192.168.99.1 (e1-2 underlay) | ✅ verified (BACKLOG.md item 4, log 62–64) |

@@ -7,11 +7,16 @@
 #
 # Design note — lab/K8s relationship (locked 2026-09-10):
 # This lab is meant to sit *underneath* the phase-2 Kubernetes/Cilium
-# cluster, not next to it as an unrelated sibling. At this stage there
-# is no K8s cluster yet, so nothing here talks to one — but each node
-# reserves a second interface (e1-2) specifically for that future
-# attachment, so the topology doesn't need to be redesigned when K8s
-# shows up. Until then e1-2 stays unused.
+# cluster, not next to it as an unrelated sibling. Each node reserves a
+# second interface (e1-2) specifically for that attachment, so the
+# topology didn't need to be redesigned when K8s showed up.
+#
+# Update, 2026-09-18 (BACKLOG.md item 4, second half): srl1's e1-2 is
+# now wired to containerlab's reserved "host" node below -- a veth
+# straight into the WSL2 host's own network namespace, the same one
+# k3s + Cilium already run natively in. This is the underlay attachment
+# point Cilium will BGP-peer over. srl2's e1-2 stays unused for now --
+# only one K8s attachment point is needed for this single-node cluster.
 #
 # IMPORTANT — deploy from native Linux filesystem, not /mnt/c/...:
 # WSL2's DrvFs (the /mnt/c/... view of the Windows drive) doesn't support
@@ -156,9 +161,24 @@ topology:
     # component #2 will stream gNMI telemetry from.
     - endpoints: ["srl1:e1-1", "srl2:e1-1"]
 
-    # e1-2 on each node is intentionally left undeclared here — it's
-    # the reserved attachment point for the future K8s/Cilium
-    # integration described above, not forgotten.
+    # e1-2 on srl1: the reserved attachment point for the K8s/Cilium
+    # underlay (BACKLOG.md item 4, second half). "host" is containerlab's
+    # reserved node name -- it does not create a new container, it
+    # creates a veth pair with one end inside srl1's own network
+    # namespace (named e1-2, same as any other srl1 interface) and the
+    # other end landing directly in the WSL2 host's root network
+    # namespace, named "srl1_e1-2" there. That's the same namespace k3s
+    # and Cilium already run natively in (see docs/setup/01-network-lab-environment.md's
+    # "why not Docker Desktop's K8s toggle" reasoning) -- so this one
+    # link is what makes it possible for Cilium to actually reach srl1
+    # at all, without going through any container network boundary.
+    # Verified against containerlab's own docs before adding this
+    # (https://containerlab.dev/manual/network/) -- not guessed.
+    - endpoints: ["srl1:e1-2", "host:srl1_e1-2"]
+
+    # srl2's e1-2 stays undeclared for now -- only srl1 needs a K8s
+    # attachment point for this single-node k3s cluster; srl2 remains
+    # reachable from Kubernetes indirectly, via srl1, once BGP is up.
 
 mgmt:
   network: netmind-mgmt

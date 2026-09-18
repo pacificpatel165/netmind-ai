@@ -215,13 +215,17 @@ sudo clab destroy -t netmind-2node.clab.yml --cleanup
 
 ---
 
-## Kubernetes — installed and verified (BACKLOG.md item 4)
+## Kubernetes — installed, verified, and fully wired to the underlay (BACKLOG.md item 4 — closed)
 
 **Status (updated 2026-09-18):** this section previously said "not
 installed yet." That went stale once k3s + Cilium were actually
-installed and verified (2026-09-17, `PROGRESS_LOG.md` entry 53) and a
-real workload was deployed on top of them (2026-09-18, entry 62) — same
-"catch the stale doc" discipline as every other component here.
+installed and verified (2026-09-17, `PROGRESS_LOG.md` entry 53), a real
+workload was deployed on top of them (2026-09-18, entry 62), the `e1-2`
+underlay link was wired and addressed (entry 63), and Cilium was
+BGP-peered with `srl1` over that link with the Pod CIDR genuinely
+advertised, received, and validly installed (entry 64) — item 4 is now
+fully closed, same "catch the stale doc" discipline as every other
+component here.
 
 Kubernetes is a real, hands-on gap in the current skill set (per
 `docs/roadmap/SIGNAL_PATH.md`) and phase 2 of the roadmap, and the
@@ -229,9 +233,10 @@ network lab's design anticipated it from the start: component #1's
 topology reserves a second interface (`e1-2`) on each SR Linux node for
 the lab to sit *underneath* the Kubernetes/Cilium cluster as its
 underlay, rather than the two running as unrelated siblings (decided
-2026-09-10). That underlay wiring (Cilium peering BGP with `srl1` over
-`e1-2`) is the one piece of item 4 still open — see
-`docs/roadmap/BACKLOG.md` item 4 for current status.
+2026-09-10). That underlay wiring — Cilium peering BGP with `srl1` over
+`e1-2` and advertising the Pod CIDR — is now done and verified from both
+sides; see the "Cilium BGP peering" subsection below and
+`docs/roadmap/BACKLOG.md` item 4 for the full history.
 
 **Where it actually got installed, and why:**
 
@@ -295,3 +300,119 @@ against the Service name landing on different pod names across
 requests — genuine Service load-balancing through Cilium's eBPF
 datapath, not just "pods say Running." See `k8s/proof-app/README.md`
 for the full build/deploy/verify steps.
+
+**`e1-2` underlay link — wired, addressed, and verified reachable
+(entry 63).** `lab/topologies/netmind-2node.clab.yml` links `srl1:e1-2`
+to containerlab's reserved `host` node, landing a veth directly in the
+WSL2 host's own network namespace (the same one k3s/Cilium run
+natively in) as `srl1_e1-2`. Requires a full `clab destroy` + `clab
+deploy` to apply (containerlab wires links at deploy time, no hot-add).
+
+Addressing it correctly took three real SR Linux gotchas, each worth
+knowing before configuring any subinterface on this platform:
+
+```bash
+# host side
+sudo ip addr add 192.168.99.1/30 dev srl1_e1-2
+```
+
+```
+# srl1 side (docker exec -it clab-netmind-2node-srl1 sr_cli)
+enter candidate
+set / interface ethernet-1/2 admin-state enable
+set / interface ethernet-1/2 subinterface 0 admin-state enable
+set / interface ethernet-1/2 subinterface 0 ipv4 admin-state enable
+set / interface ethernet-1/2 subinterface 0 ipv4 address 192.168.99.2/30
+set / network-instance default interface ethernet-1/2.0
+commit stay
+```
+
+The two gotchas that make this sequence longer than it looks like it
+should need to be: (1) a subinterface's IP address alone does **not**
+make it part of any routing table — it must be explicitly listed under
+`network-instance default interface <name>.<index>`, a genuinely
+separate binding; (2) IPv4 has its **own** admin-state switch under the
+subinterface, independent of the subinterface's own admin-state —
+skipping it leaves the subinterface stuck `Oper state: down`,
+`Down reason: no-ip-config`, even with a valid address configured.
+Verified with `show interface ethernet-1/2 detail` (look for
+`Oper state: up` with no down-reason) and bidirectional `ping` — both
+directions came back 0% loss.
+
+**Known gap:** `srl1` has no `startup-config`, so this entire sequence
+(interface addressing below, and the BGP config further down) is wiped
+by the next `clab destroy`/`clab deploy` — same as every other node
+here (deliberate, see §6/§11). Re-run it after every redeploy until a
+`startup-config` or idempotent script exists to automate it (tracked as
+`docs/roadmap/BACKLOG.md` item 38).
+
+**Cilium BGP peering with `srl1` — established, Pod CIDR advertised and
+validly installed (entry 64).** ASN/addressing design: Cilium/K8s side
+ASN 65002 at `192.168.99.1` (the host end of the link above), `srl1`
+side ASN 65001 at `192.168.99.2` (already addressed above).
+
+`srl1` side (same `sr_cli` session, after the interface config above):
+
+```
+set / network-instance default protocols bgp autonomous-system 65001
+set / network-instance default protocols bgp router-id 192.168.99.2
+set / network-instance default protocols bgp afi-safi ipv4-unicast admin-state enable
+set / network-instance default protocols bgp group ebgp-peers peer-as 65002
+set / network-instance default protocols bgp group ebgp-peers admin-state enable
+set / network-instance default protocols bgp group ebgp-peers afi-safi ipv4-unicast admin-state enable
+set / network-instance default protocols bgp neighbor 192.168.99.1 peer-group ebgp-peers
+# without this, received eBGP routes are accepted onto the wire but
+# discarded from the RIB by SR Linux's own default-reject import policy
+# (confirmed against Nokia's docs, hit live in entry 64) --
+# the Pod CIDR route will show up but stay invalid/unused without it:
+set / network-instance default protocols bgp ebgp-default-policy import-reject-all false
+commit stay
+```
+
+Cilium side — the 5 BGP-related CRDs (`ciliumbgpclusterconfigs`,
+`ciliumbgpnodeconfigs`, `ciliumbgpnodeconfigoverrides`,
+`ciliumbgppeerconfigs`, `ciliumbgpadvertisements`, all `cilium.io`) must
+exist before anything else here — they are **not** created by
+`cilium install`/`cilium upgrade` on their own (confirmed live, entry
+64: `cilium upgrade --set bgpControlPlane.enabled=true` flips the
+ConfigMap flag but never pushes the new CRD manifests). Apply them
+directly from Cilium's GitHub repo at the exact running version
+(check first with `cilium version` — don't assume it matches a doc
+example):
+
+```bash
+cilium upgrade --set bgpControlPlane.enabled=true
+kubectl -n kube-system rollout restart ds/cilium
+for f in ciliumbgpclusterconfigs ciliumbgpnodeconfigs ciliumbgpnodeconfigoverrides ciliumbgppeerconfigs ciliumbgpadvertisements; do
+  kubectl apply -f "https://raw.githubusercontent.com/cilium/cilium/v1.20.1/pkg/k8s/apis/cilium.io/client/crds/v2/${f}.yaml"
+done
+# the operator must also be restarted if it was already running before
+# the CRDs existed -- its watch loops for these resource types don't
+# self-recover once the CRDs show up (hit live, entry 64):
+kubectl -n kube-system rollout restart deployment cilium-operator
+kubectl apply -f k8s/cilium-bgp-peering.yaml
+```
+
+`k8s/cilium-bgp-peering.yaml` (committed) holds the actual peering
+config — `CiliumBGPClusterConfig` (ASN 65002, peers to `srl1` at
+`192.168.99.2`/ASN 65001), `CiliumBGPPeerConfig` (timers, and the
+`advertisements` label selector), and `CiliumBGPAdvertisement`
+(`advertisementType: PodCIDR`, labeled to match). Schema verified live
+against docs.cilium.io before writing.
+
+**Verify from both sides, not just one:**
+
+```bash
+cilium bgp peers                          # Session State: established
+cilium bgp routes advertised ipv4 unicast # Pod CIDR listed
+```
+
+```
+show network-instance default protocols bgp neighbor            # State: established
+show network-instance default protocols bgp routes ipv4 summary # Pod CIDR row: u*> (used/valid/best)
+```
+
+**Real end state (entry 64):** Cilium (`prashant-patel`, ASN 65002) ↔
+`srl1` (ASN 65001) BGP session `established` on both sides; Pod CIDR
+`10.0.0.0/24` advertised, received, and validly installed in `srl1`'s
+route table over the directly-connected `192.168.99.0/30` underlay.
