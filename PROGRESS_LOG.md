@@ -33,6 +33,16 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-18 (65) — Planning session: 4-step sequence decided for tomorrow, `claude/signal-path-plan.md` re-synced
+
+**Focus:** with entry 64 closing item 4, both of the two named phase-2 gaps (Kubernetes, AWS/LocalStack) are now closed the same day, and 10 of NetMind's 11 original components are done. This changed what "next" actually means — previously it was a forced sequence (finish item 4 before item 11, per explicit earlier instruction), now it's a genuine choice. Surfaced this directly rather than defaulting to "whatever's next on the backlog."
+
+**`claude/signal-path-plan.md`** (the claude.ai Project's living summary doc) was badly stale — last synced 13 Sep, before components #8–10, item 29, item 35, and item 4 all closed. Rewritten to reflect actual current state: phase-2 gaps both closed, all 10 built components done, the K8s/Cilium hardening stretch goal now explicitly unblocked (it was gated on both the Kubernetes gap-closing *and* the underlay existing — both true now), and the job-search-timing question flagged as technically overdue for a revisit (the "wait until the closed-loop piece exists" condition has been true since component #10 closed on the 16th). Noted the 3 published claude.ai Artifacts (Signal Path, NetMind Architecture, NetMind Signal Flow) are now visibly behind this text summary and need a refresh pass.
+
+**Decided, via direct choice rather than a default:** a 4-step sequence for what comes after this session — (1) component #11 (IaC/provisioning), (2) the K8s/Cilium security-hardening stretch goal, (3) a full project + diagram review (docs, architecture pages, the 3 stale Artifacts), (4) a genuine from-scratch rebuild test — tear down the lab, k3s/Cilium, and LocalStack entirely, rebuild using only what's written in `docs/setup/*`, no session memory to lean on, specifically to catch doc/understanding gaps the same way today's Kubernetes-doc audit just did (missing kubeconfig wiring, missing Cilium CLI install commands, both real and both fixed same session). Logged as `BACKLOG.md` items 39–41, appended after item 11 in the working-order checklist rather than left as an unlogged conversation.
+
+**Not yet done:** none of the 4 steps started — this entry is the planning decision itself, work begins next session.
+
 ### 2026-09-18 (64) — Item 4 fully closed: Cilium BGP-peers with `srl1`, Pod CIDR advertised and validly installed, after three real, sequential bugs
 
 **Focus:** the last piece of item 4 — Cilium BGP Control Plane peering to `srl1` over the `e1-2` link (entry 63), advertising the Pod CIDR. Design locked going in: Cilium/K8s side ASN 65002 at `192.168.99.1`, `srl1`/network side ASN 65001 at `192.168.99.2` (already committed on `srl1` in entry 63, sitting in `active` waiting for the other side).
