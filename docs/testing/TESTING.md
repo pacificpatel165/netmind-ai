@@ -63,7 +63,10 @@ change, they're safe to delete — find them with `find intelligence
 -maxdepth 2 -name .venv` and `rm -rf` each one except
 `intelligence/.venv` itself — nothing reads them anymore.
 
-Covered: `diagnosis-assistant` (`test_router.py`), `remediation-proposal`
+Covered: `diagnosis-assistant` (`test_router.py`, `test_llm_provider.py`
+— the latter added 2026-09-18 with the Groq/Gemini provider abstraction,
+BACKLOG.md item 35; covers dispatch logic only, not live provider HTTP
+calls), `remediation-proposal`
 (`test_remediation_templates.py`, `test_state_client.py`),
 `security-gate` (`test_gate.py`), `config-push-executor`
 (`test_executor.py`), `anomaly-detection` (`test_detector.py`),

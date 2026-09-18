@@ -3,10 +3,15 @@
 Ties together everything decided in PROGRESS_LOG entries 21-23:
 parallel retrieval (Chroma, component #6) + structured metrics
 (Prometheus, hybrid template/LLM-fallback router), assembled into one
-prompt sent to Llama 3.1 8B via Ollama, answered with citations.
+prompt sent to an LLM, answered with citations.
 
 Usage:
     python assistant.py "ethernet-1/1 just flagged an anomaly on carrier transitions, what's going on?"
+
+    LLM_PROVIDER selects the backend (default: ollama, local Llama 3.1
+    8B -- see BACKLOG.md item 35 / llm_provider.py for groq/gemini):
+    LLM_PROVIDER=groq GROQ_API_KEY=... python assistant.py "..."
+    LLM_PROVIDER=gemini GEMINI_API_KEY=... python assistant.py "..."
 
 Design notes:
 - Runs host-level, not containerized (see README.md/BACKLOG item 22)
@@ -21,7 +26,7 @@ import sys
 
 import retrieval_client
 import router
-from ollama_client import generate
+from llm_provider import generate
 
 PROMPT_TEMPLATE = """You are NetMind's diagnosis assistant. Answer the question using \
 only the context below, and cite which source each claim comes from \

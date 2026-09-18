@@ -24,16 +24,16 @@ discipline as the root `README.md` fix in entry 44.
   overhead on top of an already memory-tight WSL2 VM (§5). Revisit
   only if a concrete reason shows up (e.g. GPU passthrough into WSL2
   making a container-level integration worthwhile).
-- Provider scope: **local-only, no Groq/Gemini for now** (2026-09-13,
-  same entry). 8B already proved correct with proper citations — there
-  is no concrete gap yet that a second provider would close. Building
-  a provider abstraction speculatively would break this project's
-  established pattern of proving something's needed before building
-  it (same reasoning as the Kafka, retention, and re-ingestion
+- Provider scope: **pluggable — Ollama (default), Groq, or Gemini**,
+  selected by the `LLM_PROVIDER` env var (`llm_provider.py`). Originally
+  local-only (2026-09-13, same entry): 8B already proved correct with
+  proper citations, so there was no concrete gap a second provider
+  would close, and building one speculatively would have broken this
+  project's established pattern of proving something's needed before
+  building it (same reasoning as the Kafka, retention, and re-ingestion
   deferrals in `docs/roadmap/BACKLOG.md`). **Update, 2026-09-16:** a
-  concrete reason has since been given directly and this is reopened
-  as `BACKLOG.md` item 35 — not started yet, but no longer "no reason
-  exists."
+  concrete reason was given directly, reopening this as `BACKLOG.md`
+  item 35. **Closed, 2026-09-18** — see §9 below.
 - Structured Prometheus query strategy: **hybrid** — fixed PromQL
   templates first, LLM-generated PromQL fallback, validated before
   ever running (`PROGRESS_LOG.md` entry 21). Built and exercised for
@@ -227,5 +227,57 @@ runs without erroring.
 `test_router.py` covers `match_template()`/`extract_interface()`'s
 deterministic keyword routing, including the exact off-template case
 from entry 28 above, with no live Prometheus/Ollama/Chroma required.
-Uses the shared `intelligence/.venv` from §6 — see
+`test_llm_provider.py` (added §9 below) covers the provider-dispatch
+logic the same way — no live network call to any of the three
+backends. Uses the shared `intelligence/.venv` from §6 — see
 `docs/testing/TESTING.md`'s "Automated tests" section.
+
+## 9. Provider abstraction — Groq/Gemini (`BACKLOG.md` item 35, closed 2026-09-18)
+
+`llm_provider.py` is the single import point `assistant.py`/`router.py`
+use for generation — neither knows which backend is actually running.
+Selected by `LLM_PROVIDER` (`ollama` default, `groq`, or `gemini`):
+
+```bash
+cd ~/netmind-lab/intelligence/diagnosis-assistant
+cp .env.example .env
+# edit .env: LLM_PROVIDER=groq (or gemini), plus the matching *_API_KEY
+python assistant.py "..."
+```
+
+Keys live in a gitignored `.env` file, loaded via python-dotenv
+(`llm_provider.py`, resolved relative to that file's own directory, not
+the caller's cwd) — not passed on the command line, so they don't land
+in shell history or a process listing. An explicitly `export`ed env var
+still overrides `.env` if set (python-dotenv's default: never clobber
+a variable already in the real environment).
+
+Each backend is otherwise a plain `requests` call against the
+provider's REST API — no `groq`/`google-generativeai` SDK dependency,
+matching `ollama_client.py`'s own style (the one new dependency this
+item did add is `python-dotenv`, for the `.env` loading itself).
+Endpoint shapes were verified directly against each provider's own
+current docs before writing any code, not assumed from training data.
+Default models (`openai/gpt-oss-20b` for Groq, `gemini-3.5-flash-lite`
+for Gemini — `gemini-2.5-flash` noted as the fallback) are the user's
+own already-decided choices, carried over from a prior provider config
+rather than picked independently; each was still re-verified live
+against the provider's current model list before being wired in
+(2026-09-18) — both change their lineups often enough that skipping
+that check even for a supplied name was a real risk.
+
+**Free API keys:** Groq at `https://console.groq.com/keys`, Gemini at
+`https://aistudio.google.com/apikey`.
+
+**Exit criterion met (2026-09-18, `PROGRESS_LOG.md` entry 61):** the
+same real question run against the real lab under both
+`LLM_PROVIDER=groq` and `LLM_PROVIDER=gemini`. Groq (`openai/gpt-oss-20b`)
+returned a long, correctly-cited, structured answer naming the actual
+PromQL query used; Gemini (`gemini-3.5-flash-lite`) returned a real but
+noticeably terser answer on the identical prompt — genuinely distinct
+output from two live backends, not a cached repeat. `test_llm_provider.py`
+proves the dispatch logic; this run is what proves Groq and Gemini
+themselves actually answer. Gemini's shorter answers on the lite model
+default are logged as a forward-looking observation, not a defect —
+worth trying `gemini-2.5-flash` (the documented `.env.example` fallback)
+if terseness becomes a recurring problem in real use.

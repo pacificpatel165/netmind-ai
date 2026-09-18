@@ -21,3 +21,4 @@ chromadb==0.5.23
 ncclient==0.6.15
 prometheus-client==0.20.0
 pytest==8.3.3
+python-dotenv==1.2.3

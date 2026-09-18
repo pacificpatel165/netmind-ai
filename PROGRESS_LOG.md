@@ -33,6 +33,81 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-18 (61) — Item 35 closed: Groq and Gemini both exercised live against the real lab, real question, distinct real answers
+
+**Focus:** the item's own stated exit criterion — each provider actually exercised against a real question before being called done, not just unit-tested.
+
+**Environment gap hit and fixed first:** `python assistant.py` failed with `ModuleNotFoundError: No module named 'chromadb'` on the first attempt — `requirements.txt` lists it, but it had never actually been installed into this venv (created fresh, or installed before the item-32 shared-venv consolidation). Fixed with `pip install -r requirements.txt` from inside `diagnosis-assistant/` (this component's own requirements file, which also covers `python-dotenv`); confirmed by the subsequent run no longer hitting the import error.
+
+**Live run 1 — Groq (`LLM_PROVIDER=groq`, confirmed via `grep LLM_PROVIDER .env` before running, not assumed):**
+
+```
+python assistant.py "ethernet-1/1 just flagged an anomaly on carrier transitions, what's going on?"
+```
+
+Returned a long, structured, correctly-cited answer: identified the real PromQL query actually used (`sum(increase(...link_transitions...[15m])) + sum(increase(...carrier_transitions...[15m]))`), correctly explained carrier flapping, cited `PROGRESS_LOG.md` chunks, gave a concrete troubleshooting checklist. Genuine live call — `groq_client.py`'s fail-loud `RuntimeError` on a missing key never fired, and the answer content itself (real query text, real numbers) isn't something that could come from a cached/mocked path.
+
+**Live run 2 — Gemini (`LLM_PROVIDER=gemini`, same confirmation method):**
+
+Same question, same lab state. Returned a much terser one-line answer — noted the anomaly score and z-score but didn't explicitly name carrier flapping. Real, live, and genuinely different in both length and framing from the Groq answer — evidence this is actually hitting two distinct backends, not the same response reused. The terseness itself is a real, worth-tracking observation (see below), not treated as a failure — the exit criterion is "answers", not "answers as verbosely as the other provider."
+
+**Harmless noise seen on every run, not investigated further:** `Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given` — this is ChromaDB's own anonymous-usage-analytics call failing internally (a known ChromaDB/PostHog version-mismatch warning), unrelated to anything in this project's code. Doesn't affect retrieval or the final answer.
+
+**New observation, not yet acted on:** Gemini's `gemini-3.5-flash-lite` default gave a visibly less complete answer than Groq's `openai/gpt-oss-20b` on the identical prompt — worth watching if Gemini becomes the primary provider for real use; `gemini-2.5-flash` (the documented fallback in `.env.example`) or a non-lite Gemini model may be worth trying if terse answers turn out to be a recurring pattern, not a one-off. Not chasing this now — item 35's exit criterion was "each provider answers", which both did.
+
+**Item 35 — closed, 2026-09-18.** Provider abstraction built, unit-tested (6/6), corrected twice for real user feedback (shared-venv doc, `.env`-based keys, user's own model picks), and now live-exercised against both real backends with real, distinguishable output. Next up on the working-order checklist: item 11 (IaC/provisioning — Terraform/Ansible for components #1/#3/#4).
+
+### 2026-09-18 (60) — Item 35's default models swapped to the user's own already-decided pick, re-verified live rather than assumed
+
+**Focus:** the user shared a `.env` layout from a prior/existing provider config of theirs (`AI_PROVIDER__PROVIDER`, `AI_PROVIDER__GROQ_MODEL=openai/gpt-oss-20b`, `AI_PROVIDER__GEMINI_MODEL=gemini-3.5-flash-lite`, with `gemini-2.5-flash` noted as an alternative). Asked directly which part mattered — the nested `AI_PROVIDER__` naming, or just the model choices. Answer: **only the model names matter**; `llm_provider.py`'s existing flat env vars (`LLM_PROVIDER`, `GROQ_MODEL`, `GEMINI_MODEL`) stay as they are.
+
+**What changed:** `groq_client.py`'s default `MODEL` moved from `llama-3.1-8b-instant` to `openai/gpt-oss-20b`; `gemini_client.py`'s default moved from `gemini-3.8-flash` to `gemini-3.5-flash-lite`, with `gemini-2.5-flash` documented in `.env.example` as the noted fallback. Both are the user's own prior decisions carried over, not new picks of mine — but neither was taken on faith: re-verified live before wiring in, same discipline as everything else here.
+
+**Verified live, not assumed (2026-09-18):**
+- `openai/gpt-oss-20b` — confirmed listed under Groq's own "Production Models" (https://console.groq.com/docs/models): 131,072-token context window, still current.
+- `gemini-3.5-flash-lite` — confirmed **Stable** on Google's current model list (https://ai.google.dev/gemini-api/docs/models). `gemini-2.5-flash` also confirmed Stable. (`gemini-3.8-flash`, this item's earlier default from entry 58, is also still Stable and newer — but the user's own pick is what's kept as the default now, not substituted back.)
+
+**Docs swept for the old model names** so nothing points at a stale default: `README.md`, `docs/setup/07-diagnosis-assistant.md` §9, the docstrings in both client modules, `.env.example`'s commented overrides.
+
+**Not re-run:** `test_llm_provider.py` only tests dispatch logic against injected fakes, never touches the real `MODEL` constants, so this change doesn't affect those 6 tests either way — no re-run needed, but worth noting explicitly rather than silently assuming.
+
+**Still not done:** unchanged — the live Groq/Gemini exercise with a real key and a real question remains item 35's outstanding exit criterion.
+
+### 2026-09-18 (59) — Item 35 fixed on two real points: stale per-component-venv instructions caught, API keys moved to a gitignored `.env`
+
+**Focus:** two corrections the user caught immediately after entry 58 — both real, both worth fixing before any live run, not deferred.
+
+**Fix 1 — a stale doc caught before it caused a problem.** `intelligence/diagnosis-assistant/README.md`'s "Running it" section still described creating a *per-component* `.venv` (`cd diagnosis-assistant && python3 -m venv .venv`) — it predates item 32's shared-venv consolidation (2026-09-17) and was never updated when that landed, even though `docs/setup/07-diagnosis-assistant.md` §6 already had the correct shared-venv note. Same class of gap as the root `README.md` (entry 44) and the old `07-diagnosis-assistant.md` status line (entry 51) — a third instance of this specific pattern in this project, worth continuing to watch for whenever a cross-cutting change (item 32, item 34's auto-sync, this one) lands and older docs aren't re-swept. Fixed: README now points at `intelligence/.venv` correctly.
+
+**Fix 2 — API keys moved out of the command line.** The user asked for `.env`-file config instead of `LLM_PROVIDER=groq GROQ_API_KEY=... python assistant.py`, for the right reason: inline env vars land in shell history and are visible to anyone who can run `ps`/`/proc` on the box. Added `python-dotenv==1.2.3` (the one new dependency this item actually needed; added to both `intelligence/diagnosis-assistant/requirements.txt` and the shared `intelligence/requirements.txt` union). `llm_provider.py` now calls `load_dotenv()` pointed at a `.env` file resolved from its own file location (`Path(__file__).resolve().parent`), not the caller's cwd — same "don't trust the invoker's working directory" discipline as `run-all-tests.sh`'s `REPO_ROOT`. `.env.example` added (committed, placeholders only) and `.env` added to `.gitignore` alongside the existing `.venv/` entry, so a real key can never land in git by accident. An explicitly-exported env var still overrides `.env` if set — python-dotenv's own default behavior, not something built manually.
+
+**Verified live in this session's own sandbox, not just written:** installed `python-dotenv==1.2.3`, wrote a throwaway `.env` with a fake key, confirmed `import llm_provider` picked it up into `os.environ` with nothing exported in the real shell first, deleted the throwaway file, then re-ran all 6 `test_llm_provider.py` tests — still 6/6 passing after the change.
+
+**Also updated:** `docs/setup/07-diagnosis-assistant.md` §9 to match (`.env` workflow, `python-dotenv` named as the one real new dependency this item added — the earlier "zero new packages" framing in entry 58 was accurate for the three provider clients themselves but incomplete once `.env` support was added, corrected here).
+
+**Not yet done:** unchanged from entry 58 — the live Groq/Gemini exercise with a real key and a real question is still the outstanding exit criterion for item 35.
+
+---
+
+### 2026-09-18 (58) — Item 35 (Groq/Gemini provider abstraction) built, unit-tested; live provider exercise still owed
+
+**Focus:** start item 35 — extend component #7's single-provider (Ollama-only) `ollama_client.py` into a real, pluggable provider abstraction, reopened 2026-09-16 per `BACKLOG.md`.
+
+**Researched before writing any code (not assumed):** checked both providers' current docs directly, since guessing model names here was a real risk — Groq and Google both change their model lineups often. Confirmed live: Groq's `llama-3.1-8b-instant` is still a current production model, OpenAI-compatible at `https://api.groq.com/openai/v1/chat/completions`, `Authorization: Bearer` header. Gemini's `generateContent` REST endpoint is still fully supported (a newer "Interactions API" exists alongside it as of June 2026, not a replacement), current recommended model is `gemini-3.8-flash` (shipped 2026-09-02 — nine days before this session, confirmed against Google's own changelog).
+
+**Built:**
+- `llm_provider.py` (new) — the actual abstraction. Dispatches to `ollama_client`/`groq_client`/`gemini_client` based on the `LLM_PROVIDER` env var (default `ollama`, so existing behavior is unchanged unless a user opts in). Raises `ValueError` immediately on an unrecognized provider name rather than silently falling back to Ollama — a typo should be loud. No formal ABC/Protocol class; three one-function modules sharing a call shape (`generate(prompt, timeout=300) -> str`) don't need the ceremony.
+- `groq_client.py` / `gemini_client.py` (new) — each a single `requests`-based call, matching `ollama_client.py`'s own plain-HTTP style rather than pulling in the `groq`/`google-generativeai` SDKs (zero new dependencies in `requirements.txt`). Both raise a clear `RuntimeError` immediately if their API key env var (`GROQ_API_KEY`/`GEMINI_API_KEY`) isn't set, instead of failing opaquely three network hops later — verified this actually happens correctly (see below).
+- `assistant.py` — one-line change, `from ollama_client import generate` → `from llm_provider import generate`. Confirmed first that nothing else in `intelligence/` imports `ollama_client` directly (`router.py` only mentions it in a comment; it takes `generate_fn` injected, already decoupled) — this was a clean, isolated change, not a guess that it would be.
+- `test_llm_provider.py` (new, 6 tests) — dispatch logic only (default-to-ollama, explicit groq/gemini routing, case/whitespace-insensitive provider names, unknown-provider `ValueError` with the real valid-options list in the message). No live network call. **Ran locally in this session's own sandbox, not just written and assumed correct: all 6 passed.** Also syntax-checked all four new/changed files and directly exercised both `RuntimeError`s (`GROQ_API_KEY`/`GEMINI_API_KEY` unset) to confirm the fail-loud behavior actually fires, not just that the code reads like it would.
+- Docs updated same session, not left to drift: `intelligence/diagnosis-assistant/README.md` (provider-scope bullet, Layout, Running-it section with both providers' example invocations and free-key sign-up links), `docs/setup/07-diagnosis-assistant.md` (Decided-section update, new §9), `docs/testing/TESTING.md` (`test_llm_provider.py` added to the covered list).
+
+**Not yet done — the actual exit criterion for this item:** "each provider actually exercised against a real question before being called done" (`BACKLOG.md` item 35's own wording) is not yet met. Dispatch logic is proven; the real Groq and Gemini HTTP calls are not — that needs the user's own API keys and a real run, same as every live-system claim in this project. Handed off with free-key sign-up links in the README.
+
+**Open questions:** none blocking — purely awaiting the live run.
+
+---
+
 ### 2026-09-18 (57) — Item 29 fully closed: `awslocal` independent verification confirms every claim; recurring PATH bug fixed at the root
 
 **Focus:** finish the one loose end from log 56 — the `awslocal` independent check — and stop the PATH-export issue from recurring a fourth time.

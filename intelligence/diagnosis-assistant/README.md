@@ -24,8 +24,12 @@ and `PROGRESS_LOG.md` entries 21-23 for the full reasoning. Summary:
   does it ask the model to generate PromQL itself, which then gets
   validated by actually running it against Prometheus before its
   result is trusted (an invalid query fails there, not silently).
-- **Provider scope: local-only.** No Groq/Gemini — see BACKLOG item 22
-  for why that's deferred, not forgotten.
+- **Provider scope: pluggable, as of 2026-09-18 (BACKLOG item 35,
+  reopens item 22).** `llm_provider.py` dispatches to Ollama (default,
+  unchanged local behavior), Groq, or Gemini based on the `LLM_PROVIDER`
+  env var — `assistant.py` and `router.py` only ever import
+  `llm_provider`, never a specific backend, so adding a fourth provider
+  later means adding one file, not touching either of those.
 
 ## Layout
 
@@ -37,7 +41,16 @@ and `PROGRESS_LOG.md` entries 21-23 for the full reasoning. Summary:
 - `retrieval_client.py` — thin Chroma client, reusing component #6's
   collection (`netmind-docs`).
 - `ollama_client.py` — single-shot, non-streaming `/api/generate` call
-  with `keep_alive: 0`.
+  with `keep_alive: 0`. Default backend.
+- `groq_client.py` — single-shot chat completion against Groq's
+  OpenAI-compatible API (`openai/gpt-oss-20b` by default — matches the
+  Groq model already in use in another of my providers).
+- `gemini_client.py` — single-shot `generateContent` call against
+  Google's Gemini API (`gemini-3.5-flash-lite` by default — same
+  reasoning; `gemini-2.5-flash` is the noted fallback).
+- `llm_provider.py` — the provider abstraction: dispatches to whichever
+  of the three above `LLM_PROVIDER` names. The only module
+  `assistant.py`/`router.py` actually import for generation.
 - `assistant.py` — ties it together: retrieval + metrics (parallel
   lookups, one failing doesn't block the other) assembled into one
   prompt, answered with citations.
@@ -48,23 +61,43 @@ and `PROGRESS_LOG.md` entries 21-23 for the full reasoning. Summary:
 
 Host-level, inside the `Containerlab` distro, with the lab up and
 Ollama installed (`docs/setup/07-diagnosis-assistant.md`). Dependencies
-install into a dedicated virtual environment, not the system Python —
-see §6 of that doc for why (Debian's Python refuses a bare `pip
-install` on purpose, and `--break-system-packages` is a workaround,
-not the fix):
+install into the **shared `intelligence/.venv`** (`BACKLOG.md` item 32,
+2026-09-17) — this component no longer has its own per-component venv:
 
 ```bash
-cd ~/netmind-lab/intelligence/diagnosis-assistant
-python3 -m venv .venv          # first time only
+cd ~/netmind-lab/intelligence
+python3 -m venv .venv          # first time only, if no other component
+                                #   has already created it
 source .venv/bin/activate
 pip install -r requirements.txt
+cd diagnosis-assistant
 python assistant.py "ethernet-1/1 just flagged an anomaly on carrier transitions, what's going on?"
 ```
 
-Every subsequent run just needs `source .venv/bin/activate` again
-(then `deactivate` when done) — `.venv/` persists on native fs across
-`sync-to-lab.sh` runs (it's explicitly excluded from the sync, see
-`scripts/sync-to-lab.sh`), so it doesn't need recreating each session.
+Every subsequent run just needs `source ../.venv/bin/activate` from
+inside `diagnosis-assistant/` (or `source .venv/bin/activate` from
+`intelligence/` directly), then `deactivate` when done. `.venv/`
+persists on native fs across `sync-to-lab.sh` runs (it's explicitly
+excluded from the sync, see `scripts/sync-to-lab.sh`), so it doesn't
+need recreating each session.
+
+**Switching providers:** copy `.env.example` to `.env` in this
+directory (`.env` is gitignored — never commit real keys) and fill in
+the key for whichever provider you're using:
+
+```bash
+cd ~/netmind-lab/intelligence/diagnosis-assistant
+cp .env.example .env
+# edit .env: set LLM_PROVIDER=groq (or gemini) and the matching *_API_KEY
+python assistant.py "..."
+```
+
+Free keys: Groq at `https://console.groq.com/keys`, Gemini at
+`https://aistudio.google.com/apikey`. Keys load from `.env` via
+python-dotenv (`llm_provider.py`) rather than the command line, so they
+never land in shell history or a `ps`/process-list dump. An explicitly
+`export`ed env var still overrides `.env` if you'd rather set one that
+way for a single run.
 
 ## Not yet done / known limits of this first build
 
