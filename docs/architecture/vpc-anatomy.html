@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VPC Anatomy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1b2430;
+    --paper: #faf8f4;
+    --surface: #ffffff;
+    --line: #d9d3c7;
+    --muted: #6b7280;
+    --public: #b8551b;
+    --public-fill: rgba(184, 85, 27, 0.07);
+    --private: #1f7a6c;
+    --private-fill: rgba(31, 122, 108, 0.07);
+    --identity: #6d4aa6;
+    --identity-fill: rgba(109, 74, 166, 0.07);
+    --danger: #a13b3b;
+    --font-display: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #e8e6e1;
+      --paper: #14181d;
+      --surface: #1b2129;
+      --line: #2d3540;
+      --muted: #8b93a1;
+      --public: #e0824a;
+      --public-fill: rgba(224, 130, 74, 0.10);
+      --private: #4bb5a3;
+      --private-fill: rgba(75, 181, 163, 0.10);
+      --identity: #a58bdb;
+      --identity-fill: rgba(165, 139, 219, 0.10);
+      --danger: #d17272;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #e8e6e1;
+    --paper: #14181d;
+    --surface: #1b2129;
+    --line: #2d3540;
+    --muted: #8b93a1;
+    --public: #e0824a;
+    --public-fill: rgba(224, 130, 74, 0.10);
+    --private: #4bb5a3;
+    --private-fill: rgba(75, 181, 163, 0.10);
+    --identity: #a58bdb;
+    --identity-fill: rgba(165, 139, 219, 0.10);
+    --danger: #d17272;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    margin: 0;
+    padding-block: 48px;
+  }
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding-inline: 20px;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 38px);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+  .lede {
+    font-size: 16.5px;
+    line-height: 1.65;
+    color: var(--ink);
+    max-width: 66ch;
+    margin: 0 0 8px;
+  }
+  .lede + .lede { margin-top: 12px; }
+  .meta-row {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin: 22px 0 40px;
+    padding: 14px 18px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .meta-row b { color: var(--ink); font-weight: 600; }
+
+  section { margin-block: 52px; }
+  h2 {
+    font-size: 21px;
+    letter-spacing: -0.005em;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  .section-sub {
+    font-size: 14.5px;
+    color: var(--muted);
+    margin: 0 0 22px;
+    max-width: 62ch;
+    line-height: 1.55;
+  }
+  p.body-text {
+    font-size: 15.5px;
+    line-height: 1.7;
+    max-width: 68ch;
+    margin: 0 0 16px;
+  }
+  p.body-text code, li code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+
+  figure {
+    margin: 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px 20px 16px;
+  }
+  figure svg { width: 100%; height: auto; display: block; overflow: visible; }
+  figcaption {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.55;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    max-width: 68ch;
+  }
+  .svg-label { font-family: var(--font-display); fill: var(--ink); }
+  .svg-mono { font-family: var(--font-mono); fill: var(--muted); }
+  .svg-muted { fill: var(--muted); }
+
+  .legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin: 16px 0 0;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--identity);
+    border-radius: 0 10px 10px 0;
+    padding: 14px 18px;
+    font-size: 14.5px;
+    line-height: 1.65;
+    max-width: 68ch;
+    margin: 18px 0;
+  }
+  .callout b { color: var(--identity); }
+
+  table.ref {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  table.ref th, table.ref td {
+    text-align: left;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  table.ref th {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--paper);
+  }
+  table.ref tr:last-child td { border-bottom: none; }
+  table.ref td.term {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  table.ref td.desc { color: var(--muted); }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  footer a { color: var(--identity); }
+
+  @media (max-width: 560px) {
+    .meta-row { flex-direction: column; gap: 6px; }
+    figure { padding: 14px 12px 12px; }
+  }
+</style>
+
+</head>
+<body>
+<main>
+  <p class="eyebrow">NetMind AI · docs/architecture</p>
+  <h1>Anatomy of a VPC</h1>
+  <p class="lede">The four AWS networking primitives behind <code>cloud/aws-networking/*.tf</code> (BACKLOG.md item 29), and how they layer on top of each other: a VPC's address space, subnets carved out of it, route tables that decide what can reach the internet, and security groups that filter traffic independently of all of it.</p>
+
+  <div class="meta-row">
+    <span><b>Provisioned by:</b> Terraform</span>
+    <span><b>Simulated against:</b> LocalStack's free tier</span>
+    <span><b>Backs:</b> BACKLOG.md item 29</span>
+  </div>
+
+  <section>
+    <h2>1 — Routing: who can reach the internet</h2>
+    <p class="section-sub">Public and private aren't labels you set on a subnet — they're a consequence of which route table it's attached to.</p>
+
+    <figure role="group" aria-label="Diagram of VPC routing layer showing public and private subnets, their route tables, and the Internet Gateway">
+      <svg viewBox="0 0 900 520" role="img" aria-label="A VPC contains a public subnet whose route table sends 0.0.0.0/0 traffic to the Internet Gateway, and a private subnet whose route table has no default route, so it has no path to the internet.">
+        <defs>
+          <marker id="arrowPublic" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--public)"></path>
+          </marker>
+          <marker id="arrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+          </marker>
+        </defs>
+
+        <!-- Internet -->
+        <rect x="380" y="10" width="140" height="36" rx="8" fill="none" stroke="var(--muted)" stroke-width="1.5"></rect>
+        <text x="450" y="33" text-anchor="middle" class="svg-label" font-size="13" font-weight="600">Internet</text>
+        <line x1="450" y1="46" x2="450" y2="80" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arrowMuted)"></line>
+
+        <!-- IGW -->
+        <rect x="350" y="80" width="200" height="52" rx="8" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"></rect>
+        <text x="450" y="102" text-anchor="middle" class="svg-label" font-size="13" font-weight="600">Internet Gateway</text>
+        <text x="450" y="120" text-anchor="middle" class="svg-mono" font-size="10.5">aws_internet_gateway.main</text>
+
+        <!-- IGW to public route table -->
+        <polyline points="450,132 450,155 255,155 255,192" fill="none" stroke="var(--public)" stroke-width="1.75" marker-end="url(#arrowPublic)"></polyline>
+        <rect x="215" y="140" width="90" height="20" rx="4" fill="var(--paper)"></rect>
+        <text x="260" y="154" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--public)" font-weight="600">0.0.0.0/0</text>
+
+        <!-- VPC outer -->
+        <rect x="60" y="160" width="780" height="330" rx="14" fill="none" stroke="var(--line)" stroke-width="1.5"></rect>
+        <text x="80" y="184" class="svg-mono" font-size="12" fill="var(--ink)" font-weight="600">VPC · 10.60.0.0/16</text>
+
+        <!-- Blocked marker above private subnet -->
+        <line x1="628" y1="188" x2="642" y2="202" stroke="var(--danger)" stroke-width="2"></line>
+        <line x1="642" y1="188" x2="628" y2="202" stroke="var(--danger)" stroke-width="2"></line>
+        <text x="652" y="200" class="svg-mono" font-size="10.5" fill="var(--danger)">no route from IGW</text>
+
+        <!-- Public subnet -->
+        <rect x="90" y="212" width="350" height="258" rx="10" fill="var(--public-fill)" stroke="var(--public)" stroke-width="1.5"></rect>
+        <text x="108" y="238" class="svg-label" font-size="14.5" font-weight="700" fill="var(--public)">Public subnet</text>
+        <text x="108" y="255" class="svg-mono" font-size="11" fill="var(--muted)">10.60.1.0/24 · us-east-1a</text>
+
+        <rect x="108" y="272" width="314" height="84" rx="6" fill="var(--surface)" stroke="var(--line)"></rect>
+        <text x="120" y="291" class="svg-mono" font-size="11" font-weight="700" fill="var(--ink)">rtb-public</text>
+        <text x="120" y="309" class="svg-mono" font-size="10.5" fill="var(--muted)">10.60.0.0/16 → local</text>
+        <text x="120" y="325" class="svg-mono" font-size="10.5" fill="var(--public)" font-weight="600">0.0.0.0/0 → igw-...</text>
+        <text x="120" y="343" class="svg-mono" font-size="9.5" fill="var(--muted)">↳ this line makes it "public"</text>
+
+        <rect x="108" y="368" width="314" height="72" rx="6" fill="none" stroke="var(--line)" stroke-width="1.25" stroke-dasharray="4 4"></rect>
+        <text x="265" y="408" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--muted)" font-style="italic">(future: EC2 in this subnet)</text>
+
+        <!-- Private subnet -->
+        <rect x="460" y="212" width="350" height="258" rx="10" fill="var(--private-fill)" stroke="var(--private)" stroke-width="1.5"></rect>
+        <text x="478" y="238" class="svg-label" font-size="14.5" font-weight="700" fill="var(--private)">Private subnet</text>
+        <text x="478" y="255" class="svg-mono" font-size="11" fill="var(--muted)">10.60.2.0/24 · us-east-1a</text>
+
+        <rect x="478" y="272" width="314" height="84" rx="6" fill="var(--surface)" stroke="var(--line)"></rect>
+        <text x="490" y="291" class="svg-mono" font-size="11" font-weight="700" fill="var(--ink)">rtb-private</text>
+        <text x="490" y="309" class="svg-mono" font-size="10.5" fill="var(--muted)">10.60.0.0/16 → local</text>
+        <text x="490" y="325" class="svg-mono" font-size="10.5" fill="var(--private)" font-weight="600">(no 0.0.0.0/0 route)</text>
+        <text x="490" y="343" class="svg-mono" font-size="9.5" fill="var(--muted)">↳ this absence makes it "private"</text>
+
+        <rect x="478" y="368" width="314" height="72" rx="6" fill="none" stroke="var(--line)" stroke-width="1.25" stroke-dasharray="4 4"></rect>
+        <text x="635" y="408" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--muted)" font-style="italic">(future: EC2 in this subnet)</text>
+      </svg>
+      <figcaption>The route table decides reachability, not a flag on the subnet. <code>rtb-public</code> forwards unmatched traffic to the Internet Gateway; <code>rtb-private</code> has only the automatic local-VPC route, so anything placed in that subnet is genuinely unreachable from outside — no NAT Gateway exists in this exercise (LocalStack's free tier doesn't provision real ones), so nothing fakes a path around that.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>2 — Security groups: filtering by identity, not address</h2>
+    <p class="section-sub">A separate, independent layer — it doesn't care which subnet something is in, only what's actually asking.</p>
+
+    <figure role="group" aria-label="Diagram of security group traffic filtering showing web-sg and db-sg">
+      <svg viewBox="0 0 900 460" role="img" aria-label="Internet and admin traffic reach web-sg on specific ports. web-sg's identity, not an IP range, is the only thing permitted to reach db-sg on port 5432. A direct connection from the internet to db-sg is not permitted by any rule.">
+        <defs>
+          <marker id="arrowId" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--identity)"></path>
+          </marker>
+          <marker id="arrowMuted2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+          </marker>
+        </defs>
+
+        <!-- Sources -->
+        <rect x="40" y="24" width="230" height="46" rx="8" fill="none" stroke="var(--muted)" stroke-width="1.5"></rect>
+        <text x="155" y="52" text-anchor="middle" class="svg-label" font-size="13" font-weight="600">Internet clients (0.0.0.0/0)</text>
+
+        <rect x="630" y="24" width="230" height="46" rx="8" fill="none" stroke="var(--muted)" stroke-width="1.5"></rect>
+        <text x="745" y="52" text-anchor="middle" class="svg-label" font-size="13" font-weight="600">Admin (admin_cidr)</text>
+
+        <!-- Arrows to web-sg -->
+        <line x1="200" y1="70" x2="360" y2="140" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arrowMuted2)"></line>
+        <text x="245" y="98" class="svg-mono" font-size="10.5" fill="var(--muted)">80, 443</text>
+
+        <line x1="720" y1="70" x2="545" y2="140" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arrowMuted2)"></line>
+        <text x="655" y="98" class="svg-mono" font-size="10.5" fill="var(--muted)">22</text>
+
+        <!-- web-sg -->
+        <rect x="300" y="140" width="300" height="96" rx="10" fill="var(--identity-fill)" stroke="var(--identity)" stroke-width="1.5"></rect>
+        <text x="450" y="166" text-anchor="middle" class="svg-label" font-size="14.5" font-weight="700" fill="var(--identity)">web-sg</text>
+        <text x="450" y="186" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--muted)">80, 443 ← 0.0.0.0/0</text>
+        <text x="450" y="202" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--muted)">22 ← admin_cidr</text>
+        <text x="450" y="222" text-anchor="middle" class="svg-mono" font-size="9.5" fill="var(--muted)" font-style="italic">stateful — return traffic auto-allowed</text>
+
+        <!-- web-sg to db-sg -->
+        <line x1="450" y1="236" x2="450" y2="296" stroke="var(--identity)" stroke-width="2.25" marker-end="url(#arrowId)"></line>
+        <rect x="358" y="252" width="184" height="20" rx="4" fill="var(--paper)"></rect>
+        <text x="450" y="266" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--identity)" font-weight="600">5432 ← group: web-sg</text>
+
+        <!-- db-sg -->
+        <rect x="300" y="300" width="300" height="80" rx="10" fill="var(--identity-fill)" stroke="var(--identity)" stroke-width="1.5"></rect>
+        <text x="450" y="326" text-anchor="middle" class="svg-label" font-size="14.5" font-weight="700" fill="var(--identity)">db-sg</text>
+        <text x="450" y="346" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--muted)">5432 ← sg-web (by ID, not CIDR)</text>
+        <text x="450" y="363" text-anchor="middle" class="svg-mono" font-size="9.5" fill="var(--muted)" font-style="italic">membership changes; the rule doesn't</text>
+
+        <!-- Blocked direct path -->
+        <path d="M 90 70 C 40 220, 40 340, 296 340" fill="none" stroke="var(--danger)" stroke-width="1.5" stroke-dasharray="5 4"></path>
+        <line x1="150" y1="205" x2="164" y2="219" stroke="var(--danger)" stroke-width="2"></line>
+        <line x1="164" y1="205" x2="150" y2="219" stroke="var(--danger)" stroke-width="2"></line>
+        <text x="60" y="245" class="svg-mono" font-size="10" fill="var(--danger)">no rule permits</text>
+        <text x="60" y="258" class="svg-mono" font-size="10" fill="var(--danger)">a direct path here</text>
+      </svg>
+      <figcaption><code>db-sg</code>'s ingress rule names <code>web-sg</code>'s group ID as its source, not a CIDR block — traffic is allowed because of what it came from, not where it was addressed from. Add or remove instances from the web tier and this rule never needs to change. Nothing in this exercise permits the internet to reach <code>db-sg</code> directly, at any layer.</figcaption>
+      <div class="legend">
+        <span><span class="swatch" style="background:var(--identity)"></span>security-group scope</span>
+        <span><span class="swatch" style="background:var(--muted)"></span>unfiltered source</span>
+        <span><span class="swatch" style="background:var(--danger)"></span>no rule permits this path</span>
+      </div>
+    </figure>
+  </section>
+
+  <section>
+    <h2>How the two layers combine</h2>
+    <p class="body-text">Routing and security groups are independent and additive, not redundant — traffic has to clear both to actually arrive. The route table gets a packet to the right subnet's network interface at all; the security group then decides, port by port and source by source, whether that interface accepts it. A resource in the private subnet is unreachable from the internet for a routing reason (no path out or in exists at all). A resource in the public subnet behind <code>web-sg</code> is still only reachable on 80, 443, and 22 from admin — reachable at the network layer, restricted at the security layer. Two different jobs, stacked.</p>
+    <div class="callout">The nearest thing in NETCONF/YANG terms: a route table is the literal routing table on an interface or VRF; a security group is closer to a stateful ACL/firewall policy object attached to that interface — except AWS's security groups support group-to-group references natively, which most on-prem ACL tooling has to fake with address sets kept manually in sync.</div>
+  </section>
+
+  <section>
+    <h2>Terminology quick reference</h2>
+    <p class="section-sub">Every abbreviation used above, spelled out in full, in the same order it first appears.</p>
+    <table class="ref">
+      <thead>
+        <tr><th>Term</th><th>What it is</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="term">VPC<br><span style="font-weight:400;color:var(--muted);font-size:10.5px">Virtual Private Cloud</span></td><td class="desc">An isolated, software-defined address space — the top-level container everything else lives inside. "Virtual" because it's not a physical network, just AWS's logical boundary; "Private" because nothing outside it can see in unless explicitly connected.</td></tr>
+        <tr><td class="term">CIDR<br><span style="font-weight:400;color:var(--muted);font-size:10.5px">Classless Inter-Domain Routing</span></td><td class="desc">The notation for writing an address range as one compact value, e.g. <code>10.60.0.0/16</code> — the part before the slash is the network's starting address, the number after the slash (the "prefix length") says how many of the address's leading bits are fixed. A smaller number after the slash means more addresses are covered: <code>/16</code> covers 65,536 addresses, <code>/24</code> covers 256. Every VPC and every subnet is sized with a CIDR block.</td></tr>
+        <tr><td class="term">IP address<br><span style="font-weight:400;color:var(--muted);font-size:10.5px">Internet Protocol address</span></td><td class="desc">The numeric address (e.g. <code>10.60.1.5</code>) identifying one device on a network — what a CIDR block is a range of.</td></tr>
+        <tr><td class="term">Subnet<br><span style="font-weight:400;color:var(--muted);font-size:10.5px">sub-network</span></td><td class="desc">A smaller slice carved out of the VPC's CIDR block, pinned to one Availability Zone. Public vs. private is not a subnet attribute — it's whatever its attached route table allows (see below).</td></tr>
+        <tr><td class="term">AZ<br><span style="font-weight:400;color:var(--muted);font-size:10.5px">Availability Zone</span></td><td class="desc">A physically distinct AWS datacenter (or cluster of them) within a region, with its own power and networking, isolated so one AZ failing doesn't take down another. A subnet lives in exactly one AZ.</td></tr>
+        <tr><td class="term">Route table</td><td class="desc">The forwarding rules for a subnet's traffic — the same concept as a routing table on a router interface in traditional networking. One route table per subnet (a table can be shared across several subnets, though this exercise gives each its own).</td></tr>
+        <tr><td class="term">IGW<br><span style="font-weight:400;color:var(--muted);font-size:10.5px">Internet Gateway</span></td><td class="desc">AWS's managed, redundant edge device that hands traffic off to the real internet. Attached once per VPC; route tables point at it by its resource ID (an <code>igw-...</code> string) to send traffic there.</td></tr>
+        <tr><td class="term">NAT Gateway<br><span style="font-weight:400;color:var(--muted);font-size:10.5px">Network Address Translation Gateway</span></td><td class="desc">Would let a private subnet reach outbound internet (e.g. to download updates) without being reachable inbound — it rewrites ("translates") the private subnet's internal addresses to a public one for outgoing traffic only. Not provisioned in this exercise — LocalStack's current free tier doesn't emulate real ones.</td></tr>
+        <tr><td class="term">SG<br><span style="font-weight:400;color:var(--muted);font-size:10.5px">Security Group</span></td><td class="desc">A stateful, instance-level virtual firewall. Filters by port, protocol, and source — a source can be a CIDR block (an address range) or another security group's ID (a group of instances, by identity).</td></tr>
+        <tr><td class="term">Stateful</td><td class="desc">Allowing inbound traffic on a security group automatically permits the matching return traffic back out, without a separate rule for it — unlike a "stateless" Network ACL (Access Control List, a different, subnet-level filter not used in this exercise), which requires both directions to be opened by hand.</td></tr>
+        <tr><td class="term">TCP<br><span style="font-weight:400;color:var(--muted);font-size:10.5px">Transmission Control Protocol</span></td><td class="desc">The connection-oriented transport protocol behind the port numbers referenced throughout (22 for SSH, 80/443 for web traffic, 5432 for PostgreSQL) — what a security group's port rules are actually filtering.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    <span>NetMind AI · BACKLOG.md item 29 · <code>cloud/aws-networking/</code></span>
+    <span>Diagrammed 2026-09-18</span>
+  </footer>
+</main>
+<footer style="max-width:860px;margin:0 auto;padding:0 20px 40px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#6b7280;">
+  Interactive version: <a href="https://claude.ai/artifact/7yKiFwQDPZZMnJqRma1dG4" style="color:#6d4aa6;">claude.ai/artifact/7yKiFwQDPZZMnJqRma1dG4</a>
+</footer>
+</body>
+</html>

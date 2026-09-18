@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWS Toolchain Stack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1b2430;
+    --paper: #faf8f4;
+    --surface: #ffffff;
+    --line: #d9d3c7;
+    --muted: #6b7280;
+    --real: #b8551b;
+    --real-fill: rgba(184, 85, 27, 0.06);
+    --fake: #1f7a6c;
+    --fake-fill: rgba(31, 122, 108, 0.07);
+    --bridge: #6d4aa6;
+    --bridge-fill: rgba(109, 74, 166, 0.08);
+    --font-display: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #e8e6e1;
+      --paper: #14181d;
+      --surface: #1b2129;
+      --line: #2d3540;
+      --muted: #8b93a1;
+      --real: #e0824a;
+      --real-fill: rgba(224, 130, 74, 0.10);
+      --fake: #4bb5a3;
+      --fake-fill: rgba(75, 181, 163, 0.10);
+      --bridge: #a58bdb;
+      --bridge-fill: rgba(165, 139, 219, 0.10);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #e8e6e1;
+    --paper: #14181d;
+    --surface: #1b2129;
+    --line: #2d3540;
+    --muted: #8b93a1;
+    --real: #e0824a;
+    --real-fill: rgba(224, 130, 74, 0.10);
+    --fake: #4bb5a3;
+    --fake-fill: rgba(75, 181, 163, 0.10);
+    --bridge: #a58bdb;
+    --bridge-fill: rgba(165, 139, 219, 0.10);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    margin: 0;
+    padding-block: 48px;
+  }
+  main { max-width: 860px; margin: 0 auto; padding-inline: 20px; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 38px);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+  .lede {
+    font-size: 16.5px;
+    line-height: 1.65;
+    max-width: 66ch;
+    margin: 0 0 40px;
+  }
+  section { margin-block: 48px; }
+  h2 { font-size: 20px; margin: 0 0 6px; text-wrap: balance; }
+  .section-sub {
+    font-size: 14.5px;
+    color: var(--muted);
+    margin: 0 0 20px;
+    max-width: 62ch;
+    line-height: 1.55;
+  }
+  p.body-text {
+    font-size: 15.5px;
+    line-height: 1.72;
+    max-width: 68ch;
+    margin: 0 0 16px;
+  }
+  p.body-text code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+  figure {
+    margin: 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px 20px 16px;
+  }
+  figure svg { width: 100%; height: auto; display: block; overflow: visible; }
+  figcaption {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.55;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    max-width: 68ch;
+  }
+  .svg-label { font-family: var(--font-display); fill: var(--ink); }
+  .svg-mono { font-family: var(--font-mono); fill: var(--muted); }
+  .legend { display: flex; gap: 20px; flex-wrap: wrap; margin: 16px 0 0; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
+  .steps { display: flex; flex-direction: column; gap: 0; }
+  .step {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--bridge-fill);
+    color: var(--bridge);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .step-title { font-weight: 600; font-size: 15px; margin: 0 0 4px; }
+  .step-body { font-size: 14px; color: var(--muted); line-height: 1.6; margin: 0; }
+  .step-body code { font-family: var(--font-mono); font-size: 0.92em; background: var(--surface); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  footer a { color: var(--bridge); }
+
+  @media (max-width: 560px) {
+    figure { padding: 14px 12px 12px; }
+    .step { grid-template-columns: 28px 1fr; }
+  }
+</style>
+
+</head>
+<body>
+<main>
+  <p class="eyebrow">NetMind AI · docs/architecture</p>
+  <h1>Where Each Piece Fits</h1>
+  <p class="lede">A plain-language map of every tool involved in BACKLOG.md item 29 — what LocalStack is, what Terraform is, and why one depends on the other only in one specific, narrow place.</p>
+
+  <section>
+    <h2>The one-sentence version</h2>
+    <p class="body-text">Terraform is a construction manager that reads a blueprint and issues build orders in "AWS language"; LocalStack is a mannequin that answers to that language on your own laptop instead of the real AWS servers answering it — nothing else changes.</p>
+  </section>
+
+  <section>
+    <h2>The whole stack, top to bottom</h2>
+    <p class="section-sub">Everything you typed lives at the top; everything it actually runs on lives at the bottom.</p>
+
+    <figure role="group" aria-label="Layered diagram of the full toolchain from your Terraform blueprint down to the Docker container it actually talks to">
+      <svg viewBox="0 0 860 760" role="img" aria-label="main.tf is read by the Terraform CLI, which hands work to the AWS provider plugin. The provider would normally talk to real AWS over the internet, but an endpoint override redirects it to LocalStack running in a Docker container inside the Containerlab WSL2 environment on your Windows laptop instead. awslocal checks the result independently afterward.">
+        <defs>
+          <marker id="arrB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--bridge)"></path>
+          </marker>
+          <marker id="arrM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+          </marker>
+          <marker id="arrR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--real)"></path>
+          </marker>
+          <marker id="arrF" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--fake)"></path>
+          </marker>
+        </defs>
+
+        <!-- main.tf -->
+        <rect x="290" y="10" width="280" height="60" rx="10" fill="var(--bridge-fill)" stroke="var(--bridge)" stroke-width="1.5"></rect>
+        <text x="430" y="34" text-anchor="middle" class="svg-label" font-size="14" font-weight="700">main.tf — your blueprint</text>
+        <text x="430" y="53" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--muted)">"I want a VPC, two subnets, two security groups..."</text>
+
+        <line x1="430" y1="70" x2="430" y2="98" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arrM)"></line>
+
+        <!-- terraform CLI -->
+        <rect x="270" y="98" width="320" height="60" rx="10" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"></rect>
+        <text x="430" y="122" text-anchor="middle" class="svg-label" font-size="14" font-weight="700">Terraform — the construction manager</text>
+        <text x="430" y="141" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--muted)">reads the blueprint, works out the right build order</text>
+
+        <line x1="430" y1="158" x2="430" y2="186" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arrM)"></line>
+
+        <!-- AWS provider -->
+        <rect x="250" y="186" width="360" height="64" rx="10" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"></rect>
+        <text x="430" y="211" text-anchor="middle" class="svg-label" font-size="14" font-weight="700">AWS provider plugin — the translator</text>
+        <text x="430" y="230" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--muted)">turns "build a VPC" into the exact request AWS's API expects</text>
+
+        <!-- Fork -->
+        <line x1="360" y1="250" x2="230" y2="300" stroke="var(--real)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrR)"></line>
+        <line x1="500" y1="250" x2="630" y2="300" stroke="var(--bridge)" stroke-width="2.25" marker-end="url(#arrB)"></line>
+
+        <rect x="190" y="258" width="150" height="20" rx="4" fill="var(--paper)"></rect>
+        <text x="265" y="272" text-anchor="middle" class="svg-mono" font-size="9.5" fill="var(--real)">default address</text>
+
+        <rect x="540" y="258" width="180" height="20" rx="4" fill="var(--paper)"></rect>
+        <text x="630" y="272" text-anchor="middle" class="svg-mono" font-size="9.5" fill="var(--bridge)" font-weight="600">redirected: localhost:4566</text>
+
+        <!-- Real AWS (unused) -->
+        <rect x="60" y="300" width="340" height="70" rx="10" fill="var(--real-fill)" stroke="var(--real)" stroke-width="1.5" stroke-dasharray="4 3"></rect>
+        <text x="230" y="326" text-anchor="middle" class="svg-label" font-size="13.5" font-weight="700" fill="var(--real)">Real AWS — Amazon's actual cloud</text>
+        <text x="230" y="345" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--muted)">real servers, real cost, real risk</text>
+        <text x="230" y="360" text-anchor="middle" class="svg-mono" font-size="10" fill="var(--real)" font-style="italic">NOT used in this exercise</text>
+
+        <!-- LocalStack container -->
+        <rect x="440" y="300" width="360" height="70" rx="10" fill="var(--fake-fill)" stroke="var(--fake)" stroke-width="1.5"></rect>
+        <text x="620" y="326" text-anchor="middle" class="svg-label" font-size="13.5" font-weight="700" fill="var(--fake)">LocalStack — a fake AWS on your laptop</text>
+        <text x="620" y="345" text-anchor="middle" class="svg-mono" font-size="10.5" fill="var(--muted)">answers the same requests, for free, with no real risk</text>
+        <text x="620" y="360" text-anchor="middle" class="svg-mono" font-size="10" fill="var(--fake)" font-style="italic">this is what we're actually using</text>
+
+        <line x1="620" y1="370" x2="620" y2="398" stroke="var(--fake)" stroke-width="1.5" marker-end="url(#arrF)"></line>
+
+        <!-- Docker container -->
+        <rect x="470" y="398" width="300" height="56" rx="10" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"></rect>
+        <text x="620" y="421" text-anchor="middle" class="svg-label" font-size="13" font-weight="600">Docker container</text>
+        <text x="620" y="438" text-anchor="middle" class="svg-mono" font-size="10" fill="var(--muted)">a sealed little box the LocalStack program runs inside</text>
+
+        <line x1="620" y1="454" x2="620" y2="482" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arrM)"></line>
+
+        <!-- WSL2 distro -->
+        <rect x="440" y="482" width="360" height="56" rx="10" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"></rect>
+        <text x="620" y="505" text-anchor="middle" class="svg-label" font-size="13" font-weight="600">Containerlab WSL2 distro</text>
+        <text x="620" y="522" text-anchor="middle" class="svg-mono" font-size="10" fill="var(--muted)">a full Linux computer living inside Windows</text>
+
+        <line x1="620" y1="538" x2="620" y2="566" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arrM)"></line>
+
+        <!-- Laptop -->
+        <rect x="440" y="566" width="360" height="56" rx="10" fill="var(--paper)" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="3 3"></rect>
+        <text x="620" y="589" text-anchor="middle" class="svg-label" font-size="13" font-weight="600">Your Windows laptop</text>
+        <text x="620" y="606" text-anchor="middle" class="svg-mono" font-size="10" fill="var(--muted)">everything above runs right here — nothing leaves it</text>
+
+        <!-- awslocal check, off to the side -->
+        <rect x="40" y="470" width="330" height="70" rx="10" fill="var(--bridge-fill)" stroke="var(--bridge)" stroke-width="1.5"></rect>
+        <text x="205" y="496" text-anchor="middle" class="svg-label" font-size="13.5" font-weight="700" fill="var(--bridge)">awslocal / aws CLI — the independent check</text>
+        <text x="205" y="515" text-anchor="middle" class="svg-mono" font-size="10" fill="var(--muted)">walks in separately and confirms what actually got built</text>
+        <line x1="370" y1="500" x2="435" y2="420" stroke="var(--bridge)" stroke-width="1.75" stroke-dasharray="5 4" marker-end="url(#arrB)"></line>
+      </svg>
+      <figcaption>Two things share the LocalStack container: Terraform builds through it (the solid violet path), and <code>awslocal</code> checks it afterward through a completely separate path (the dashed violet path) — the second one doesn't trust the first, it looks for itself.</figcaption>
+      <div class="legend">
+        <span><span class="swatch" style="background:var(--bridge)"></span>build path (used)</span>
+        <span><span class="swatch" style="background:var(--fake)"></span>LocalStack (what we use)</span>
+        <span><span class="swatch" style="background:var(--real)"></span>real AWS (not used)</span>
+      </div>
+    </figure>
+  </section>
+
+  <section>
+    <h2>What each name actually means, one at a time</h2>
+    <p class="body-text"><b>AWS</b> is Amazon's real cloud computing service — actual computers, in actual buildings, that anyone can rent by the hour. <b>LocalStack</b> is a separate, unrelated program that pretends to be AWS: it listens for the same kinds of requests and answers the same way AWS would, but it's really just software running on your own laptop, so nothing costs money and nothing is "real."</p>
+    <p class="body-text"><b>Docker</b> is a way of packaging a program (like LocalStack) into a self-contained box called a <b>container</b>, so it can be started, stopped, and thrown away cleanly without touching the rest of your system. <b>WSL2</b> is Windows' way of running a real Linux computer inside your Windows laptop — the `Containerlab` distro is the specific Linux environment this project already uses for the network lab and Kubernetes.</p>
+    <p class="body-text"><b>Terraform</b> is a tool for describing infrastructure you want as a text file, and then having that description made real automatically, instead of clicking through a website or typing commands one at a time. The file you write it in is often called a "blueprint" here because that's exactly the role it plays. The <b>AWS provider</b> is a plugin Terraform downloads that knows how to turn your generic description into the specific request format AWS (real or fake) actually expects — it's the only piece that needed to be told "send your requests to LocalStack, not real AWS," via the four-line address override in <code>main.tf</code>.</p>
+    <p class="body-text"><b>awslocal</b> (and its full form, the <b>aws CLI</b>) is a completely different tool from Terraform — you don't use it to build anything, only to look. It sends its own separate requests to LocalStack afterward, asking "what's actually there?" so you're checking with a second, independent tool rather than just trusting the builder's own report.</p>
+  </section>
+
+  <section>
+    <h2>Matching this to what you actually typed</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div><p class="step-title"><code>localstack start -d</code></p><p class="step-body">Tells Docker to launch the LocalStack container — the mannequin wakes up and starts listening on <code>localhost:4566</code>.</p></div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div><p class="step-title"><code>terraform init</code></p><p class="step-body">Downloads the AWS provider plugin — the translator — so Terraform is able to speak "AWS" at all.</p></div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div><p class="step-title"><code>terraform plan</code></p><p class="step-body">A dry run — Terraform works out what it would build, and shows you before touching anything. Nothing is created yet.</p></div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div><p class="step-title"><code>terraform apply</code></p><p class="step-body">The real build — the provider sends the create-VPC, create-subnet, create-security-group requests to LocalStack (because of the address override), and LocalStack hands back real-shaped IDs like <code>vpc-596022934a8a7da49</code>.</p></div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div><p class="step-title"><code>awslocal ec2 describe-vpcs</code> (and friends)</p><p class="step-body">The independent check — a separate tool walks in and asks LocalStack directly what exists, instead of trusting Terraform's own success message.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>NetMind AI · BACKLOG.md item 29 · <code>cloud/aws-networking/</code></span>
+    <span>Diagrammed 2026-09-18</span>
+  </footer>
+</main>
+<footer style="max-width:860px;margin:0 auto;padding:0 20px 40px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#6b7280;">
+  Interactive version: <a href="https://claude.ai/artifact/GpMSVmfyA52AqWYqAZjgkd" style="color:#6d4aa6;">claude.ai/artifact/GpMSVmfyA52AqWYqAZjgkd</a>
+</footer>
+</body>
+</html>

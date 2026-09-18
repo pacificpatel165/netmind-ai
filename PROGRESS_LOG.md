@@ -33,6 +33,73 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-18 (57) — Item 29 fully closed: `awslocal` independent verification confirms every claim; recurring PATH bug fixed at the root
+
+**Focus:** finish the one loose end from log 56 — the `awslocal` independent check — and stop the PATH-export issue from recurring a fourth time.
+
+**Verified live, independently of Terraform's own apply output:** `awslocal ec2 describe-vpcs/describe-subnets/describe-route-tables/describe-security-groups` confirmed every claim made in this exercise, not just that Terraform said it succeeded:
+- `vpc-596022934a8a7da49` (`10.60.0.0/16`) exists alongside LocalStack's own pre-populated default VPC (`172.31.0.0/16` — not something this exercise created, worth noting so a future reader isn't confused by it).
+- Public subnet `10.60.1.0/24` shows `Public: true`; private subnet `10.60.2.0/24` shows `Public: false`.
+- `rtb-887082f671e2bec8d` (public) has both the local route and `0.0.0.0/0 → igw-2630e9c0f8646d5a8`; `rtb-bb19ac438347c4664` (private) has **only** the local route — the "no path out of the private subnet" design claim from `docs/architecture/vpc-anatomy.html`, actually true on inspection, not just asserted.
+- `db-sg`'s ingress rule shows `UserIdGroupPairs: [{GroupId: sg-5338d212be6f0d00d}]` (web-sg's real ID) with an empty `IpRanges` — the identity-based-filtering claim, also actually true on inspection.
+
+**Item 29 is now fully closed** — design decided, Terraform written, `apply` run live, and every claim independently checked against the real (simulated) API state rather than trusted from tool output. `cloud/aws-networking/` stays in the repo as a working, reusable exercise.
+
+**Root-fixed the recurring PATH bug** (bit `localstack`, then `awslocal`, twice — three total installs affected by the same root cause across this session): `~/.bashrc` only loads for interactive shells, and something about how new terminals were opening in this environment wasn't reliably sourcing it. Fixed by also writing the export to `~/.profile` (read by login shells regardless), with a `grep -q` guard so re-running it is a no-op instead of duplicating lines. `cloud/aws-networking/README.md`'s LocalStack-install step updated to do both from the start, so a future setup of this exercise (or any future pip `--user` install in this distro) doesn't hit the same wall.
+
+**Not yet done:** nothing outstanding on item 29 itself. Optional and left to the user: `terraform destroy && localstack stop` to tear the exercise down if the resources aren't needed running.
+
+---
+
+### 2026-09-18 (56) — Item 29 (AWS networking on LocalStack) closed: real `terraform apply` verified live, `lsb_release` gap fixed, second explainer diagram delivered
+
+**Focus:** get item 29 all the way to a live, independently-verified close — the user ran the full chain themselves this session, hit two real environment gaps along the way, and both got root-caused from the actual pasted output rather than guessed at.
+
+**Gap 1 — Terraform install failed:** the README's `$(lsb_release -cs)` substitution silently expanded to nothing because `lsb_release` isn't installed in the `Containerlab` WSL2 distro (it's Debian, not Ubuntu — confirmed live: `VERSION_CODENAME` came back `bookworm`). That produced a malformed `apt` sources line (`apt` error: "Malformed entry 1 (Component)"), and a retry left a corrupted keyring behind because `gpg --dearmor -o` refused to overwrite non-interactively. Fixed: `cloud/aws-networking/README.md` step 3 now reads the codename from `/etc/os-release` directly (no extra package needed, works on minimal distros) and documents clearing the keyring/list file first on retry. User re-ran the corrected commands live: `codename: bookworm`, `Terraform v1.16.3` installed cleanly.
+
+**Verified live — real `terraform apply` output, not assumed:** `terraform init` (downloaded `hashicorp/aws` v5.100.0), `terraform plan` (10 to add, 0 to change), `terraform apply -auto-approve` — all 10 resources created with real LocalStack-issued IDs: `vpc-596022934a8a7da49`, `igw-2630e9c0f8646d5a8`, `subnet-649c29f1f86d1b621` (public), `subnet-71ceab4df2760c9e1` (private), `rtb-887082f671e2bec8d` (public), `rtb-bb19ac438347c4664` (private), `sg-5338d212be6f0d00d` (web), `sg-0c1d295e9dfe158e4` (db), plus both route-table associations. Build order matched the dependency graph exactly (VPC first, then IGW/subnets/route tables in parallel, associations last) — real proof the AWS provider → LocalStack path works end to end.
+
+**Gap 2 — LocalStack's own account-requirement change (mid-conversation, already fixed in log 55):** covered in the prior entry; recorded here again only because it directly gated this session's `apply`.
+
+**Gap 3 — `awslocal: command not found`:** `pip install localstack` only installs the LocalStack CLI, not `awslocal` — that's a separate package, `awscli-local`, which itself wraps the real `aws` CLI. Neither was installed. Fixed by having the user run `pip install awscli awscli-local --break-system-packages`. Not yet re-verified live (handed to the user as the last remaining step) — **item 29 is functionally proven by the real `apply` output above, but the independent `awslocal describe-*` check from the README is still outstanding** and should close the loop once run.
+
+**Also delivered this entry:** `docs/architecture/aws-toolchain.html` — a second explainer diagram, this one plain-language/beginner-oriented per an explicit ask ("I am new to these topics... explain in easy sentence... layman way"), mapping the full toolchain end to end: `main.tf` (blueprint) → Terraform (construction manager) → AWS provider plugin (translator) → an address-override fork showing real AWS (unused, grayed) vs. LocalStack (used) → the Docker container LocalStack actually runs in → the `Containerlab` WSL2 distro → the physical laptop, plus a separate `awslocal` path shown explicitly as an independent check rather than part of the build path. Published as a claude.ai Artifact and committed into the repo as a standalone page, same pattern as the Cilium/K8s doc and the VPC-anatomy doc.
+
+**Not yet done:** the `awslocal describe-*` independent verification pass (pip install just handed to the user, not yet re-run); tearing the LocalStack resources down afterward (`terraform destroy && localstack stop`) is optional and left to the user's discretion, not required for item 29's exit criterion.
+
+---
+
+### 2026-09-18 (55) — Corrected a wrong claim in the item 29 README: LocalStack no longer offers a standalone free/no-account Community Edition; VPC anatomy diagram delivered
+
+**Focus:** the user hit a real blocker running the setup steps from log 54's README — `localstack start -d` failed with `License activation failed! ... No credentials were found`. Root-caused before responding, not guessed at.
+
+**Wrong claim, found and fixed:** the README written in log 54 said LocalStack was "free, no account needed" — true as of this project's general knowledge, **not true anymore**. Researched live (not assumed): LocalStack merged its Community and Pro editions into one image earlier in 2026 and now requires a free account + auth token to start at all, even for personal/non-commercial use. The `LOCALSTACK_ACKNOWLEDGE_ACCOUNT_REQUIREMENT=1` grace-period bypass (the exact error message the user saw referenced) expired 2026-04-06, so it no longer works either. A still-free tier exists, it just requires signing up at `app.localstack.cloud` and running `localstack auth set-token <token>` before `localstack start`.
+
+**Fixed:** `cloud/aws-networking/README.md` updated in place — old claim struck through with an explicit "Correction, 2026-09-18" note (not silently rewritten) plus the real sign-up-and-token steps, and a `docker ps` check added to step 2 so the user can independently confirm the engine really is running as a container (not skip that verification just because the CLI itself runs on the host — the user asked specifically why a "should-be-containerized" tool was running install steps on the host, and the honest answer is: the CLI is host-side by design, only the actual LocalStack engine is the container).
+
+**Also delivered this entry:** `docs/architecture/vpc-anatomy.html` — a two-diagram explainer (routing layer: VPC/subnets/route tables/IGW; security-group layer: web-sg/db-sg identity-based filtering) built at the user's request to explain the concepts behind `cloud/aws-networking/*.tf` before they ran it, plus a terminology table spelling out every abbreviation in full (VPC, CIDR, AZ, IGW, NAT, SG, TCP) per an explicit follow-up ask. Published as a claude.ai Artifact and, per this project's now-established pattern (see log entry for the Cilium/K8s/Docker doc), re-wrapped with a full standalone `<!DOCTYPE html>` skeleton and committed into the repo since the Artifact-format source has no doctype/head/body of its own.
+
+**Not yet done:** the user still needs to actually get LocalStack running (sign up, token, `localstack start -d`, `docker ps` confirmation) before `terraform apply` can be attempted — item 29 remains in progress, not blocked on anything further from this side.
+
+---
+
+### 2026-09-18 (54) — Item 29 (AWS networking on LocalStack): design decided, Terraform written, awaiting live run
+
+**Focus:** start item 29 — never picked up before today, no design decisions existed. Design decisions made via explicit choice this session:
+- **IaC tool: Terraform**, over boto3 scripts or raw AWS CLI — chosen for the direct resume-relevance (Terraform isn't already on the resume) and because it's a real, reusable declarative pattern (state, plan/apply) rather than a one-off script, matching this project's "prove it, write it up" discipline used everywhere else.
+- **Run environment: the `Containerlab` WSL2 distro** — reuses the Docker CE already installed and proven there this project (same one running the SR Linux lab and k3s/Cilium), no new environment to stand up.
+
+**Built (not yet run — written here, no shell access into the user's real environment; same constraint as every other component's first draft):** `cloud/aws-networking/` — new top-level directory, deliberately separate from `intelligence/` since this is phase-2 gap-closing work, not part of NetMind's data flow.
+- `main.tf` — AWS provider pointed at LocalStack's endpoint (`localhost:4566`, dummy creds, `skip_credentials_validation`), a VPC (`10.60.0.0/16`), public subnet (`10.60.1.0/24`) + private subnet (`10.60.2.0/24`) in one AZ, an Internet Gateway, a public route table with a `0.0.0.0/0 -> igw` route and a private route table with **no** default route (deliberate — LocalStack Community Edition doesn't provision real NAT Gateways, so faking outbound reachability from the private subnet would be dishonest; noted explicitly in the README rather than silently working around it), and two security groups (`web-sg` open on 80/443/22, `db-sg` allowing 5432 **only from `web-sg`'s group ID**, not a CIDR — the actual point of building two tiers instead of one flat network).
+- `variables.tf` / `outputs.tf` — all CIDRs/region/tags overridable with committed defaults; outputs expose the VPC/subnet/SG IDs a future workload would attach to.
+- `README.md` — install steps for LocalStack (pip) and Terraform (HashiCorp apt repo) inside the `Containerlab` distro, `terraform init/plan/apply`, and independent verification via `awslocal` (LocalStack's AWS-CLI wrapper) checking VPC/subnet/route-table/security-group state directly against the simulated API — not just trusting Terraform's own apply output, same double-check pattern used for every other component here.
+
+**Not yet verified — could not run Terraform in this session** (no network egress to HashiCorp's release servers from the sandbox to even syntax-check with a local `terraform validate`; reviewed the HCL by eye instead). Handed to the user as the next real step: install LocalStack + Terraform in the `Containerlab` distro, run `terraform apply`, then the `awslocal` verification commands from the README, and paste the real output back before this is logged as closed.
+
+**Open questions:** none blocking — this is a self-contained exercise, no dependency on NetMind's own components.
+
+---
+
 ### 2026-09-17 (53) — Component #4 (Kubernetes): k3s + Cilium installed and verified live; one benign kernel-limitation finding
 
 **Focus:** Start component #4 (Kubernetes/Cilium) per the working-order checklist, following the design already recorded in `docs/setup/01-network-lab-environment.md`'s "Kubernetes — not installed yet" section: native k3s inside the `Containerlab` WSL2 distro (not Docker Desktop's Kubernetes toggle — same kernel-namespace isolation problem containerlab itself had to work around originally), Cilium as CNI, eventually wired to the `e1-2` interface each SR Linux node already reserves as a future underlay attachment point (deliberately deferred — separate, later, non-trivial step, not attempted this session).
