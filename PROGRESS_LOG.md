@@ -33,6 +33,24 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-18 (62) — Item 4 (Kubernetes), workload half closed: real app deployed, a real CoreDNS/WSL2 bug hit and fixed live
+
+**Focus:** item 4's first remaining piece — deploy a real workload on k3s beyond `cilium connectivity test`'s own synthetic pods (entry 53's "not yet done" list). The second piece (Cilium BGP peering to SR Linux over the reserved `e1-2` interface) is still open, tracked separately below.
+
+**Built:** `k8s/proof-app/` — a deliberately minimal 2-replica Flask app (`/healthz`, `/info`) fronted by a `ClusterIP` Service, no dependency on any other NetMind component. Built locally and imported straight into k3s's containerd (`docker save | sudo k3s ctr images import -`, `imagePullPolicy: Never`) — no registry, same shape as `intelligence/anomaly-detection`'s Dockerfile. Deployed cleanly on the first try: `kubectl get pods` showed both replicas `1/1 Running` with distinct pod IPs (`10.0.0.100`, `10.0.0.1`), `kubectl get svc` showed the ClusterIP assigned.
+
+**Real bug hit and root-caused live, not guessed:** the actual proof step — repeated `curl`s against the Service name from a throwaway debug pod — failed every time with `curl: (6) Could not resolve host`. Diagnosed properly rather than assumed: `kubectl -n kube-system get pods -l k8s-app=kube-dns` showed CoreDNS stuck at `0/1 Ready`, 19+ restarts over 23 hours; its own logs showed a repeating `[ERROR] plugin/errors: ... HINFO: read udp ...->10.255.255.254:53: i/o timeout` — CoreDNS's built-in loop-detection self-check failing because its configured upstream forwarder was unreachable. Confirmed (not assumed) that `10.255.255.254` is WSL2's own internal DNS-forwarding proxy address, matching the host's own `/etc/resolv.conf` exactly, and confirmed via `kubectl -n kube-system get configmap coredns -o yaml` that CoreDNS's Corefile forwards to `/etc/resolv.conf` (i.e. inherits this same address into its own pod). Matches a documented WSL2 pattern where this proxy address is reachable from the host shell but not from inside a separate CNI-managed pod network namespace ([microsoft/WSL#6237](https://github.com/microsoft/WSL/issues/6237)).
+
+**Fix, verified against k3s's own docs before applying (not guessed):** k3s's CoreDNS ConfigMap is explicitly "managed by k3s, do not edit" — it gets overwritten on every k3s restart. k3s's Corefile already imports `/etc/coredns/custom/*.override`, and k3s's own documentation (docs.k3s.io/advanced) names the supported override point: a `coredns-custom` ConfigMap in `kube-system`. Committed as `k8s/coredns-custom.yaml` (`forward . 8.8.8.8 1.1.1.1`) — applied via `kubectl apply` + `kubectl -n kube-system rollout restart deployment coredns`. **Verified live:** CoreDNS came back `1/1 Running`, `RESTARTS 0`, held there through the whole retest (checked before and after), and its logs no longer showed the `HINFO` timeout.
+
+**Real proof, not just "no errors":** re-ran the Service-name curl test (`curl-test3`, 4 attempts against `http://netmind-proof-app/info`). All 4 returned real JSON, and critically the `pod` field alternated between `netmind-proof-app-89bc4bb8b-n7js2` and `netmind-proof-app-89bc4bb8b-7tm8p` across the 4 requests — genuine proof the Service is load-balancing across both replicas through Cilium's eBPF datapath, not just that one pod happens to be up.
+
+**Also fixed along the way (a real user-caught process issue, not a technical one):** two earlier `curl-test` attempts using `kubectl run ... --rm -it` produced no usable output — `-it` tries to attach an interactive terminal, which doesn't work cleanly through a paste-based session. Switched to `kubectl run ... --restart=Never` (no `-rm -it`) + `kubectl logs`, which is also more scriptable/repeatable generally, not just a workaround for this session.
+
+**Docs swept so the fix isn't lost on a rebuild:** `docs/setup/01-network-lab-environment.md`'s "Kubernetes — not installed yet" section was stale (Kubernetes was actually installed back in entry 53) — rewritten with the real install steps, the CoreDNS bug and fix (with an explicit "apply this on every fresh cluster build" note, since a from-scratch k3s+Cilium rebuild would hit the identical bug on this machine), and the proof-app.
+
+**Item 4 status:** workload half — closed. Underlay half (Cilium BGP peering to `srl1` over the reserved `e1-2` interface) — still open, next up.
+
 ### 2026-09-18 (61) — Item 35 closed: Groq and Gemini both exercised live against the real lab, real question, distinct real answers
 
 **Focus:** the item's own stated exit criterion — each provider actually exercised against a real question before being called done, not just unit-tested.

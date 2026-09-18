@@ -1,0 +1,35 @@
+# NetMind AI — component #4 (Kubernetes).
+#
+# Fixes a real, reproducible bug on this machine's WSL2 setup: k3s's
+# built-in CoreDNS forwards unresolved queries to whatever address the
+# host's /etc/resolv.conf names -- on WSL2 that's 10.255.255.254, its
+# own internal DNS-forwarding proxy. That address is reachable from the
+# WSL2 shell directly, but NOT from inside a pod's separate
+# Cilium-managed network namespace, so CoreDNS crash-loops forever
+# (confirmed live, 2026-09-18, PROGRESS_LOG.md entry 62 -- 19+ restarts,
+# `HINFO ... i/o timeout` in its own logs) and every in-cluster DNS
+# lookup fails.
+#
+# k3s's own CoreDNS ConfigMap is "managed by k3s, do not edit" --
+# overwritten on every k3s restart. This is the supported override
+# instead: k3s's Corefile already imports
+# /etc/coredns/custom/*.override, and this ConfigMap's name/namespace
+# are exactly what that import picks up automatically
+# (https://docs.k3s.io/advanced). Forwards to real, always-reachable
+# public resolvers instead of WSL2's pod-unreachable proxy.
+#
+# Apply this on every fresh cluster build, right after Cilium is
+# verified healthy -- without it, in-cluster DNS is broken from the
+# start on this specific machine:
+#
+#   kubectl apply -f k8s/coredns-custom.yaml
+#   kubectl -n kube-system rollout restart deployment coredns
+#   kubectl -n kube-system get pods -l k8s-app=kube-dns   # expect 1/1, RESTARTS 0
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  netmind.override: |
+    forward . 8.8.8.8 1.1.1.1

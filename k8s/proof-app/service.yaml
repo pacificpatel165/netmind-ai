@@ -1,0 +1,15 @@
+# NetMind AI — component #4 (Kubernetes), the k3s proof workload.
+# ClusterIP is enough to prove the Service abstraction (kube-proxy is
+# disabled -- Cilium's eBPF datapath handles this) -- no need for
+# NodePort/LoadBalancer just to prove the path from inside the cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: netmind-proof-app
+spec:
+  selector:
+    app: netmind-proof-app
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP

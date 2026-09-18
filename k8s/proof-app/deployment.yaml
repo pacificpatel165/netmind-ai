@@ -1,0 +1,42 @@
+# NetMind AI — component #4 (Kubernetes), the k3s proof workload.
+#
+# 2 replicas deliberately (not 1) -- a single pod would prove the
+# Service abstraction is unnecessary, since you could just curl the
+# pod IP directly. Two replicas + a Service is what actually proves
+# k3s + Cilium are doing real, non-synthetic load-balancing: repeated
+# curls against the Service IP should land on different pod names
+# (see /info in app.py).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netmind-proof-app
+  labels:
+    app: netmind-proof-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: netmind-proof-app
+  template:
+    metadata:
+      labels:
+        app: netmind-proof-app
+    spec:
+      containers:
+        - name: proof-app
+          image: netmind-proof-app:latest
+          imagePullPolicy: Never # locally built + imported into containerd, no registry
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
