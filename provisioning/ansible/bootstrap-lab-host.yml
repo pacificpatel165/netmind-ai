@@ -1,0 +1,221 @@
+---
+# NetMind AI — component #11 (IaC/provisioning), first slice: host bootstrap.
+#
+# Turns docs/setup/01-network-lab-environment.md's manually-typed sections
+# 5, 8, 9, 10, and part of the Kubernetes section (kubeconfig + Cilium CLI)
+# into one idempotent playbook. Safe to re-run on an already-bootstrapped
+# machine -- every task checks first and only acts when something's
+# actually missing, same discipline as every "verify, don't assume"
+# decision elsewhere in this project.
+#
+# Explicitly OUT of scope for this playbook (still separate, manual steps
+# -- see docs/setup/01-network-lab-environment.md):
+#   - Section 2 (wsl --update) and section 3 (installing the wsl-containerlab
+#     .wsl distro itself) -- both run from Windows, before this distro (and
+#     therefore Ansible inside it) exists at all.
+#   - Section 4 (Docker Desktop WSL integration toggle) -- a Windows-side
+#     Docker Desktop GUI setting, not reachable from inside the distro.
+#   - Registering the generated SSH public key on GitHub -- needs a human
+#     logged into GitHub; this playbook only generates the key.
+#   - Installing k3s and Cilium themselves -- both are already effectively
+#     one already-idempotent command each (see the Kubernetes section of
+#     the setup doc); the real pain point this playbook targets is
+#     everything *around* them that wasn't in any file.
+#
+# Usage:
+#   ansible-playbook bootstrap-lab-host.yml -e "git_email=you@example.com"
+#
+# See README.md in this directory for the one-time Ansible install step,
+# what each task does, and how to verify the end state.
+
+- name: Bootstrap the NetMind-AI lab host (Containerlab WSL2 distro)
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    gnmic_check_path: /usr/local/bin/gnmic
+    ssh_key_path: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
+    kube_dir: "{{ ansible_env.HOME }}/.kube"
+    kubeconfig_path: "{{ ansible_env.HOME }}/.kube/config"
+    k3s_kubeconfig_source: /etc/rancher/k3s/k3s.yaml
+    cilium_cli_path: /usr/local/bin/cilium
+    git_email: "pingppatel@gmail.com"  # override with -e git_email=you@example.com
+
+  tasks:
+    # --- section 9: rsync -------------------------------------------------
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      become: true
+
+    - name: Install rsync (sync-to-lab.sh depends on it)
+      ansible.builtin.apt:
+        name: rsync
+        state: present
+      become: true
+
+    # --- section 5: Docker CE + containerlab -------------------------------
+    - name: Check whether Docker CE is already installed
+      ansible.builtin.command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Check whether containerlab is already installed
+      ansible.builtin.command: clab version
+      register: clab_check
+      changed_when: false
+      failed_when: false
+
+    - name: Install Docker CE + containerlab (official combined setup script)
+      ansible.builtin.shell: curl -sL https://containerlab.dev/setup | bash -s "all"
+      become: true
+      when: docker_check.rc != 0 or clab_check.rc != 0
+      # No clean native-module equivalent for this vendor-combined installer
+      # (it installs Docker CE *and* containerlab together, not separately
+      # apt-manageable here) -- guarded above by checking both binaries
+      # first instead, so re-running this playbook doesn't re-run it.
+
+    # --- section 8: gnmic ----------------------------------------------------
+    - name: Check whether gnmic is already installed
+      ansible.builtin.stat:
+        path: "{{ gnmic_check_path }}"
+      register: gnmic_check
+
+    - name: Install gnmic (gNMI CLI client, not bundled with containerlab)
+      ansible.builtin.shell: bash -c "$(curl -sL https://get-gnmic.openconfig.net)"
+      when: not gnmic_check.stat.exists
+
+    # --- section 10: personal SSH key for git push ---------------------------
+    - name: Ensure ~/.ssh exists with correct permissions
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/.ssh"
+        state: directory
+        mode: "0700"
+
+    - name: Check whether a personal ed25519 key already exists
+      ansible.builtin.stat:
+        path: "{{ ssh_key_path }}"
+      register: ssh_key_check
+
+    - name: Generate a personal ed25519 SSH key (key only -- GitHub registration is manual)
+      ansible.builtin.command: >
+        ssh-keygen -t ed25519 -N "" -f {{ ssh_key_path }} -C "{{ git_email }}"
+      when: not ssh_key_check.stat.exists
+
+    - name: Warn if git_email was left at its placeholder default
+      ansible.builtin.debug:
+        msg: >-
+          git_email is still the placeholder default -- the generated key's
+          comment won't identify you. Re-run with
+          -e "git_email=you@example.com" if that matters, or edit the key
+          comment by hand later.
+      when: not ssh_key_check.stat.exists and git_email == "CHANGE-ME@example.com"
+
+    # --- Kubernetes section: kubectl access (only meaningful once k3s exists) --
+    - name: Check whether k3s's own kubeconfig exists yet
+      ansible.builtin.stat:
+        path: "{{ k3s_kubeconfig_source }}"
+      register: k3s_kubeconfig_check
+
+    - name: Wire up a normal-user kubeconfig from k3s's
+      when: k3s_kubeconfig_check.stat.exists
+      block:
+        - name: Ensure ~/.kube exists
+          ansible.builtin.file:
+            path: "{{ kube_dir }}"
+            state: directory
+            mode: "0700"
+
+        - name: Copy k3s's kubeconfig for normal-user access
+          ansible.builtin.copy:
+            src: "{{ k3s_kubeconfig_source }}"
+            dest: "{{ kubeconfig_path }}"
+            remote_src: true
+            owner: "{{ ansible_env.USER }}"
+            mode: "0600"
+          become: true
+
+        - name: Persist KUBECONFIG in ~/.bashrc
+          ansible.builtin.lineinfile:
+            path: "{{ ansible_env.HOME }}/.bashrc"
+            line: "export KUBECONFIG=~/.kube/config"
+            create: true
+
+    - name: Note that k3s isn't installed yet, kubeconfig step skipped
+      ansible.builtin.debug:
+        msg: >-
+          k3s's kubeconfig ({{ k3s_kubeconfig_source }}) doesn't exist yet,
+          so the normal-user kubeconfig wiring was skipped. Install k3s
+          first (docs/setup/01-network-lab-environment.md, Kubernetes
+          section), then re-run this playbook to pick up this step.
+      when: not k3s_kubeconfig_check.stat.exists
+
+    # --- Kubernetes section: Cilium CLI ---------------------------------------
+    - name: Check whether the Cilium CLI is already installed
+      ansible.builtin.stat:
+        path: "{{ cilium_cli_path }}"
+      register: cilium_cli_check
+
+    - name: Install the Cilium CLI
+      when: not cilium_cli_check.stat.exists
+      block:
+        - name: Get the latest stable Cilium CLI version
+          ansible.builtin.uri:
+            url: https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt
+            return_content: true
+          register: cilium_cli_version
+
+        - name: Download and checksum-verify the Cilium CLI release
+          ansible.builtin.shell: |
+            set -euo pipefail
+            VERSION="{{ cilium_cli_version.content | trim }}"
+            curl -L --fail --remote-name-all \
+              "https://github.com/cilium/cilium-cli/releases/download/${VERSION}/cilium-linux-amd64.tar.gz" \
+              "https://github.com/cilium/cilium-cli/releases/download/${VERSION}/cilium-linux-amd64.tar.gz.sha256sum"
+            sha256sum --check cilium-linux-amd64.tar.gz.sha256sum
+          args:
+            chdir: /tmp
+            creates: /tmp/cilium-linux-amd64.tar.gz
+
+        - name: Extract the Cilium CLI to /usr/local/bin
+          ansible.builtin.unarchive:
+            src: /tmp/cilium-linux-amd64.tar.gz
+            dest: /usr/local/bin
+            remote_src: true
+          become: true
+
+        - name: Clean up the downloaded archive
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /tmp/cilium-linux-amd64.tar.gz
+            - /tmp/cilium-linux-amd64.tar.gz.sha256sum
+
+    # --- Final summary -----------------------------------------------------
+    - name: Re-check every tool's actual state for the summary (not assumed from the tasks above)
+      ansible.builtin.command: "{{ item.cmd }}"
+      register: final_checks
+      changed_when: false
+      failed_when: false
+      loop:
+        - { name: "Docker", cmd: "docker --version" }
+        - { name: "containerlab", cmd: "clab version" }
+        - { name: "gnmic", cmd: "gnmic version" }
+        - { name: "rsync", cmd: "rsync --version" }
+        - { name: "Cilium CLI", cmd: "cilium version --client" }
+
+    - name: Print end-state summary
+      vars:
+        # clab version's first output line is blank (an ASCII banner, not
+        # text) -- found live, 2026-09-19 -- so pick the first *non-empty*
+        # line rather than assuming line 0 always has the version string.
+        first_nonempty_line: "{{ (item.stdout_lines | select('trim') | list | first) if item.stdout_lines is defined else '' }}"
+      ansible.builtin.debug:
+        msg: "{{ item.item.name }}: {{ 'OK — ' + (first_nonempty_line | default('installed', true)) if item.rc == 0 else 'MISSING / FAILED' }}"
+      loop: "{{ final_checks.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
