@@ -33,6 +33,20 @@ Build order follows the numbering: 1→4 is phase 4 (telemetry), 5→10 is phase
 
 ---
 
+### 2026-09-19 (68) — Planning: CI pipeline + Helm chart added to the sequence as item 44, scoped to the anomaly detector, placed after item 39
+
+**Focus:** user asked how a real organization actually installs/configures this kind of system on a client server, correctly flagging that "SSH in and run a playbook by hand" — exactly what item 11 just proved — doesn't scale past one person on one machine. Answered with a mentor-style walkthrough of the real professional stack (CI build/test/push to a registry, Terraform for real infra, fleet-scale config management or golden images instead of one-off Ansible runs, Helm + GitOps for deploying app workloads onto Kubernetes, secrets management, dev/staging/prod environment parity) mapped explicitly against what NetMind already has (the IaC instinct, the security-gate approval/audit pattern, running documentation) versus what's still individual-lab-shaped.
+
+**Real architectural point surfaced, not just a tooling one:** most of NetMind's actual components (Prometheus, Grafana, Chroma, gnmic, the anomaly detector) currently run as `linux`-kind nodes inside the containerlab topology — a network-*emulation* tool, not an app-hosting platform. They ended up there because containerlab was the only substrate that existed when those components were built, not because it's the right home. k3s + Cilium, already running natively and just hardened this session, is the substrate actually meant to host application workloads. A CI+Helm pipeline is only meaningful paired with actually moving a component there — building the tooling without that move would automate the wrong home for these services.
+
+**Decided, via explicit choice (`AskUserQuestion`), not defaulted:**
+- **Sequencing:** item 39 (K8s/Cilium hardening) stays first — hardening an empty cluster teaches less than hardening one with a real workload running on it, so CI+Helm (logged as item 44) goes *after* 39, not folded into it and not deferred past the review/rebuild steps.
+- **Scope for the first pass:** just the anomaly detector — one real component, full loop (GitHub Actions runs the existing test suite, builds the image, pushes to `ghcr.io` with an immutable commit-SHA tag; a Helm chart deploys it onto the real k3s cluster; CI triggers the upgrade). Deliberately not Prometheus/Grafana/Chroma in the same pass, and deliberately not all six containerlab-hosted components at once — smallest slice that proves the whole pattern end to end before deciding whether the rest follow.
+
+**Logged as `BACKLOG.md` item 44**, inserted between items 39 and 40 in the working-order sequence (now a 7-step arc, was 6). containerlab itself stays untouched by this — it keeps doing exactly what it's for, simulating the network underneath, not hosting app workloads.
+
+**Not yet done:** nothing built this entry — this is the planning/scoping decision itself, same shape as entry 65's 4-step (later 6-step) sequencing session. Next real work is item 39.
+
 ### 2026-09-19 (67) — Item 11 verified live: real locale bug found and fixed, playbook run for real, closed for the idempotency/skip-path with an honest first-install caveat
 
 **Focus:** the actual next step named at the end of entry 66 — run `bootstrap-lab-host.yml` for real on the `Containerlab` distro and paste back genuine output.
